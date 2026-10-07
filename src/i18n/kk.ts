@@ -40,6 +40,7 @@ const ui: Dict['ui'] = {
   // program screen and running
   blocksTitle: 'Блоктар',
   pythonTitle: 'Python — дәл сондай код',
+  blocksLocked: 'Python-дағы қатені түзет — содан кейін блоктарды өзгертуге болады',
   trackLabel: 'Трасса',
   track_first_steps: 'Алғашқы қадамдар',
   track_barrier: 'Тосқауыл',

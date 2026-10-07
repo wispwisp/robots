@@ -12,10 +12,13 @@ const MARGIN = 16; // between arranged blocks and the pane's edge
 
 export interface BlocksPane {
   // Replaces the blocks without calling onChange. `arrange`: lay them out in a column (converted Python).
+  // Throws when the blocks can't be loaded (e.g. a block type that no longer exists); the pane is then empty.
   load(json: object, arrange?: boolean): void;
   save(): object;
   workspace(): Blockly.WorkspaceSvg;
-  setReadOnly(readOnly: boolean): void;
+  setReadOnly(readOnly: boolean): void; // while a program runs
+  // While the Python is ahead of the blocks (null: it isn't); `hint` is shown on the locked pane ('' for none).
+  setSyncLock(hint: string | null): void;
   highlight(blockId: string | null): void;
   relocalize(): void;
   setDark(dark: boolean): void;
@@ -30,11 +33,13 @@ export function createBlocksPane(parent: HTMLElement, onChange: () => void): Blo
   el.className = 'blocks-pane';
   el.dataset.testid = 'blocks-pane';
   el.dataset.highlight = '';
-  // The lock is a transparent cover that takes every click while the blocks are read-only.
-  el.innerHTML = '<div class="blocks-host"></div><div class="blocks-lock" hidden></div>';
+  // The lock is a cover that takes every click while the blocks are read-only or locked by the sync.
+  el.innerHTML = '<div class="blocks-host"></div><div class="blocks-lock" hidden><p class="blocks-lock-hint"></p></div>';
   parent.append(el);
   const host = el.querySelector<HTMLElement>('.blocks-host')!;
   const lock = el.querySelector<HTMLElement>('.blocks-lock')!;
+  let readOnly = false;
+  let syncHint: string | null = null;
   let dark = false;
   let ws = inject();
   // Also catches the screen being shown. While hidden, Blockly has no size and pins its view to the blocks'
@@ -68,7 +73,7 @@ export function createBlocksPane(parent: HTMLElement, onChange: () => void): Blo
   function load(json: object, arrange = false): void {
     Blockly.Events.disable();
     try {
-      Blockly.serialization.workspaces.load(json, ws);
+      loadOrClear(json);
       if (arrange) {
         ws.cleanUp(); // a column from the top-left corner, in their order
         for (const block of ws.getTopBlocks()) block.moveBy(MARGIN, MARGIN);
@@ -77,6 +82,29 @@ export function createBlocksPane(parent: HTMLElement, onChange: () => void): Blo
       Blockly.Events.enable();
     }
     ws.clearUndo(); // undoing must not bring back blocks from before the load
+  }
+
+  // Blockly's load, when it fails half-way, leaves its loading state set and some blocks created.
+  function loadOrClear(json: object): void {
+    const recordUndo = Blockly.Events.getRecordUndo();
+    const group = Blockly.Events.getGroup();
+    try {
+      Blockly.serialization.workspaces.load(json, ws);
+    } catch (error) {
+      Blockly.Events.setRecordUndo(recordUndo);
+      Blockly.Events.setGroup(group);
+      Blockly.utils.dom.stopTextWidthCache();
+      ws.setResizesEnabled(true);
+      ws.clear();
+      throw error;
+    }
+  }
+
+  function updateLock(): void {
+    const locked = readOnly || syncHint !== null;
+    if (locked && lock.hidden) Blockly.hideChaff(); // closes an open flyout or dropdown
+    lock.hidden = !locked;
+    lock.firstElementChild!.textContent = readOnly ? '' : syncHint;
   }
 
   function highlight(blockId: string | null): void {
@@ -88,9 +116,13 @@ export function createBlocksPane(parent: HTMLElement, onChange: () => void): Blo
     load,
     save: () => Blockly.serialization.workspaces.save(ws),
     workspace: () => ws,
-    setReadOnly(readOnly) {
-      if (readOnly) Blockly.hideChaff(); // closes an open flyout or dropdown
-      lock.hidden = !readOnly;
+    setReadOnly(value) {
+      readOnly = value;
+      updateLock();
+    },
+    setSyncLock(hint) {
+      syncHint = hint;
+      updateLock();
     },
     highlight,
     // Blockly reads its texts when blocks are created, so a new language needs a new workspace.

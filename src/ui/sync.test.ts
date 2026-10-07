@@ -15,14 +15,23 @@ afterEach(() => { vi.useRealTimers(); setLang('ru'); });
 
 const LINE_FOLLOWER = 'from robot import *\n\nwhile True:\n    if line("front_left"):\n        motors(0, 50)\n';
 
+// Saved blocks that the blocks pane can't load any more.
+const STALE = { blocks: { languageVersion: 0, blocks: [{ type: 'robot_old_move' }] } };
+
 // Stand-ins for the two panes: a headless workspace, and the editor's text and error.
 function setup() {
   const ws = createHeadlessWorkspace();
   const arranged: boolean[] = [];
+  const pane = { lock: null as string | null };
   const blocks = {
-    load(json: object, arrange = false) { Blockly.serialization.workspaces.load(json, ws); arranged.push(arrange); },
+    load(json: object, arrange = false) {
+      if (json === STALE) throw new Error('Invalid block definition');
+      Blockly.serialization.workspaces.load(json, ws);
+      arranged.push(arrange);
+    },
     save: () => Blockly.serialization.workspaces.save(ws),
     workspace: () => ws,
+    setSyncLock: (hint: string | null) => { pane.lock = hint; },
   } as unknown as BlocksPane;
   const editor = { text: '', error: null as EditorError | null };
   const editorPane = {
@@ -36,7 +45,13 @@ function setup() {
   // The student types: the editor's text changes and it tells the sync.
   const type = (text: string) => { editor.text = text; sync.pythonChanged(); };
   const typeOf = (line: number) => ws.getBlockById(sync.lineToBlock.get(line)!)?.type;
-  return { ws, sync, editor, states, arranged, type, typeOf };
+  // A block edit: the stop block under «при запуске», then the pane's change callback.
+  const addStop = () => {
+    const stop = ws.newBlock('robot_stop');
+    ws.getBlocksByType('robot_start')[0].nextConnection!.connect(stop.previousConnection!);
+    sync.blocksChanged();
+  };
+  return { ws, sync, editor, pane, states, arranged, type, typeOf, addStop };
 }
 
 test('a new project gets its blocks from the Python', () => {
@@ -90,16 +105,51 @@ test('a syntax error blocks Run and keeps the blocks; fixing it clears the error
   expect(editor.error).toBeNull();
 });
 
-test('a block edit regenerates the Python, drops a waiting edit and uses the generator line map', () => {
-  const { ws, sync, editor, type, typeOf } = setup();
+test('a block edit regenerates the Python with the generator line map', () => {
+  const { sync, editor, pane, typeOf, addStop } = setup();
   sync.load(DEFAULT_PYTHON, null);
-  type('motors(1,2)\n');
-  const stop = ws.newBlock('robot_stop');
-  ws.getBlocksByType('robot_start')[0].nextConnection!.connect(stop.previousConnection!);
-  sync.blocksChanged();
-  vi.runAllTimers();
+  expect(pane.lock).toBeNull();
+  addStop();
   expect(editor.text).toBe('from robot import *\n\nstop()\n');
   expect(typeOf(3)).toBe('robot_stop');
+});
+
+test('while the Python is ahead of the blocks they are locked and never overwrite it (R18b)', () => {
+  const { ws, sync, editor, pane, type, addStop } = setup();
+  sync.load(DEFAULT_PYTHON, null);
+  type('motors(1,2)\n');
+  expect(pane.lock).toBe(''); // waiting for the typing pause: locked, no hint
+  addStop();
+  expect(editor.text).toBe('motors(1,2)\n');
+  vi.runAllTimers();
+  expect(pane.lock).toBeNull();
+  expect(ws.getBlocksByType('robot_motors')).toHaveLength(1);
+  expect(ws.getBlocksByType('robot_stop')).toHaveLength(0); // the typed Python won
+
+  const broken = 'from robot import *\n\nif x\n';
+  type(broken);
+  sync.flush();
+  expect(pane.lock).toContain('Исправь ошибку в Python');
+  addStop();
+  expect(editor.text).toBe(broken);
+  setLang('kk');
+  expect(pane.lock).toContain('қатені түзет');
+  type('stop()\n');
+  sync.flush();
+  expect(pane.lock).toBeNull();
+});
+
+test('saved blocks that no longer load are rebuilt from the saved Python (R18a)', () => {
+  const { ws, sync, editor, pane, states, typeOf } = setup();
+  sync.load('from robot import *\n\nstop()\n', STALE);
+  expect(editor.text).toBe('from robot import *\n\nstop()\n');
+  expect(typeOf(3)).toBe('robot_stop');
+  expect(states.at(-1)!.blocks).not.toEqual(STALE);
+
+  sync.load('from robot import *\n\nif x\n', STALE); // and Python that doesn't parse either
+  expect(ws.getTopBlocks().map(b => b.type)).toEqual(['robot_start']);
+  expect(sync.runBlocked).toBe(true);
+  expect(pane.lock).toContain('Исправь');
 });
 
 test('saved blocks are kept when the saved Python is their code, rebuilt when it was edited', () => {

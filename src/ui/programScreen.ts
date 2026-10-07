@@ -26,7 +26,17 @@ export function renderProgramScreen(root: HTMLElement): void {
   applyTheme();
   onThemeChange(applyTheme);
 
+  const translate = () => {
+    for (const e of code.querySelectorAll<HTMLElement>('[data-text]')) e.textContent = t(e.dataset.text as UiKey);
+  };
+  translate();
+  onLangChange(() => {
+    translate();
+    blocks.relocalize();
+  });
+
   // The program saved last; any other program in the state (a new project) is loaded into the editors.
+  // Loaded last, so the screen is fully set up whatever the saved program holds.
   let saved: ProgramState | null = null;
   sync.onState(state => {
     saved = state;
@@ -36,15 +46,6 @@ export function renderProgramScreen(root: HTMLElement): void {
     const { python, blocks: json } = getState();
     if (python !== saved?.python || json !== saved?.blocks) sync.load(python, json);
   };
-  loadProgram();
   subscribe(loadProgram);
-
-  const translate = () => {
-    for (const e of code.querySelectorAll<HTMLElement>('[data-text]')) e.textContent = t(e.dataset.text as UiKey);
-  };
-  translate();
-  onLangChange(() => {
-    translate();
-    blocks.relocalize();
-  });
+  loadProgram();
 }

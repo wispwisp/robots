@@ -245,6 +245,25 @@ button:focus-visible {
 
 .blocks-lock { z-index: 100; }
 
+/* Locked by a Python error: the blocks are dimmed under the hint. */
+.blocks-lock:has(.blocks-lock-hint:not(:empty)) {
+  display: grid;
+  place-items: end center; /* under the program, next to the Python and its error */
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.blocks-lock-hint {
+  margin: 14px;
+  padding: 8px 14px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  background: var(--error-soft);
+  color: var(--error);
+  font-weight: 600;
+}
+
+.blocks-lock-hint:empty { display: none; }
+
 /* The block being run: Blockly's own highlight only lightens it a little. */
 .blocks-pane .blocklyHighlighted > .blocklyPath {
   stroke: var(--ink);

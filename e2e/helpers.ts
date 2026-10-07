@@ -14,6 +14,11 @@ export async function setPython(page: Page, text: string): Promise<void> {
   await page.keyboard.insertText(text);
 }
 
+// The editor's exact text (its lines; a short program is fully rendered).
+export async function getPython(page: Page): Promise<string> {
+  return (await page.locator('[data-testid=python-editor] .cm-line').allTextContents()).join('\n');
+}
+
 const category = (page: Page, name: string) =>
   page.getByTestId('blocks-pane').locator('.blocklyToolboxCategory', { hasText: name });
 
@@ -32,6 +37,8 @@ export async function dragFromToolboxIntoStart(page: Page, categoryName: string,
   // Held 10 px inside the block's top-left corner, so its top-left lands on the start block's bottom-left.
   await page.mouse.move(from.x + 10, from.y + 10);
   await page.mouse.down();
+  // First away from the flyout, which may lie right over the drop point: the drag must really start.
+  await page.mouse.move(from.x + 200, from.y + 10, { steps: 5 });
   await page.mouse.move(to.x + 10, to.y + to.height + 10, { steps: 10 });
   await page.mouse.up();
 }

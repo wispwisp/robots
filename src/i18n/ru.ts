@@ -41,6 +41,7 @@ const ui = {
   // program screen and running
   blocksTitle: 'Блоки',
   pythonTitle: 'Python — тот же код',
+  blocksLocked: 'Исправь ошибку в Python — потом можно менять блоки',
   trackLabel: 'Трасса',
   track_first_steps: 'Первые шаги',
   track_barrier: 'Шлагбаум',
