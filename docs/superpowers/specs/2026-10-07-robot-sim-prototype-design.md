@@ -192,10 +192,13 @@ errors); other errors show Python's original English text.
 - The simulation advances in fixed steps of 1/60 s, paced to real time.
 - In each step the program runs until it gives a command — `motors`, `stop`,
   `wait`, or `print` — then pauses until the next step. Sensor reads don't
-  pause. `wait(s)` pauses for `s` seconds of simulated time.
-- Python that runs without giving any command (e.g. `while True: pass`) is
-  interrupted after a few milliseconds and continues in the next step, so
-  Stop always works and the tab never freezes.
+  pause, but every 100 sensor reads without a command also end the step, so
+  a "wait until" loop such as `while distance("front_center") > 20: pass`
+  lets simulated time pass. `wait(s)` pauses for `s` seconds of simulated
+  time.
+- Python that runs without commands or sensor reads (e.g. `while True: pass`)
+  is paused every few milliseconds so Stop always works and the tab never
+  freezes, but no simulated time passes while it runs.
 - If the laptop can't keep up, the simulation slows down instead of skipping
   steps, so a run is identical on every machine.
 - At each pause, the block and Python line that caused it are highlighted.
