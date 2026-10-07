@@ -1,0 +1,37 @@
+// Shared steps for the end-to-end tests. Each test starts with an empty browser profile, so a new project.
+import { expect, type Page } from '@playwright/test';
+
+export async function gotoProgram(page: Page): Promise<void> {
+  await page.goto('/');
+  await page.getByTestId('step-program').click();
+  await expect(page.getByTestId('python-editor')).toBeVisible();
+}
+
+// Replaces the whole Python text. insertText types it in one go, so CodeMirror doesn't auto-indent it.
+export async function setPython(page: Page, text: string): Promise<void> {
+  await page.getByTestId('python-editor').click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.insertText(text);
+}
+
+const category = (page: Page, name: string) =>
+  page.getByTestId('blocks-pane').locator('.blocklyToolboxCategory', { hasText: name });
+
+export async function openVariablesCategoryAndClickCreate(page: Page): Promise<void> {
+  await category(page, 'Переменные').click();
+  await page.locator('.blocklyFlyoutButton', { hasText: 'Создать переменную' }).click();
+}
+
+// Drags a block from a toolbox category and drops it right under «при запуске».
+export async function dragFromToolboxIntoStart(page: Page, categoryName: string, blockLabel: string): Promise<void> {
+  await category(page, categoryName).click();
+  const block = page.locator('.blocklyFlyout .blocklyDraggable').filter({ hasText: blockLabel }).first();
+  const start = page.locator('svg.blocklySvg .blocklyBlockCanvas > .blocklyDraggable').filter({ hasText: 'при запуске' });
+  const from = (await block.boundingBox())!;
+  const to = (await start.boundingBox())!;
+  // Held 10 px inside the block's top-left corner, so its top-left lands on the start block's bottom-left.
+  await page.mouse.move(from.x + 10, from.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 10, to.y + to.height + 10, { steps: 10 });
+  await page.mouse.up();
+}

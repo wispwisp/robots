@@ -3,6 +3,7 @@ import { getLang, onLangChange, setLang, t } from './i18n';
 import type { SavedState } from './storage';
 import { renderAssembly } from './ui/assembly';
 import { renderHeader } from './ui/header';
+import { renderProgramScreen } from './ui/programScreen';
 import { getState, subscribe } from './ui/state';
 import { applyTheme } from './ui/theme';
 
@@ -44,3 +45,4 @@ applyState(getState());
 showLanguage();
 renderHeader(app.querySelector('.topbar')!);
 renderAssembly(screens.assembly);
+renderProgramScreen(screens.program);

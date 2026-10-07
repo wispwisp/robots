@@ -28,6 +28,8 @@
   --sensor-red: #ef4444;
   --sensor-green: #22c55e;
   --sensor-eye: #ffffff;
+  --error: #b91c1c;
+  --error-soft: #fee2e2;
 }
 
 [data-theme='dark'] {
@@ -53,6 +55,8 @@
   --slot-empty: #7b8798;
   --sensor-line: #0b0f14;
   --sensor-line-edge: #6b788c;
+  --error: #fca5a5;
+  --error-soft: #3a1d22;
 }
 
 * { box-sizing: border-box; }
@@ -217,6 +221,52 @@ button:focus-visible {
 .program-track {
   min-width: 0;
   min-height: 0;
+}
+
+.program-code {
+  display: grid;
+  grid-template-rows: 60% 1fr;
+  gap: 10px;
+}
+
+/* Blockly needs a box with a definite size; the lock covers it (toolbox included) while a program runs. */
+.blocks-pane {
+  position: relative;
+  z-index: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.blocks-host,
+.blocks-lock {
+  position: absolute;
+  inset: 0;
+}
+
+.blocks-lock { z-index: 100; }
+
+/* The block being run: Blockly's own highlight only lightens it a little. */
+.blocks-pane .blocklyHighlighted > .blocklyPath {
+  stroke: var(--ink);
+  stroke-width: 3px;
+}
+
+.program-code .cm-editor {
+  flex: 1;
+  min-height: 0;
+  font-size: 14px;
+}
+
+.program-code .cm-editor.cm-focused { outline: none; } /* the cursor and the active line show the focus */
+.program-code .cm-editor .cm-line.cm-run-line { background: var(--accent-soft); }
+
+.python-error {
+  margin: 0;
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--error-soft);
+  color: var(--error);
+  font-weight: 600;
 }
 
 /* ---- panes: a titled box, as in the mockup ---- */
