@@ -1,6 +1,225 @@
+/* Colour tokens: light on :root, dark under [data-theme=dark] (set on <html> by ui/theme.ts). */
+:root {
+  color-scheme: light;
+  --bg: #e9edf2;
+  --surface: #ffffff;
+  --surface-alt: #f1f3f6;
+  --ink: #1d2330;
+  --muted: #5b6472;
+  --border: #cfd5de;
+  --accent: #f59e0b;
+  --accent-ink: #1d2330;
+  --focus: #3b82f6;
+  --bar-bg: #263244;
+  --bar-ink: #ffffff;
+  --bar-muted: #c3ccda;
+  --bar-control: #3a475c;
+  --bar-control-hover: #4a5870;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #11161d;
+  --surface: #1a212b;
+  --surface-alt: #222b37;
+  --ink: #e6e9ef;
+  --muted: #9aa4b3;
+  --border: #2e3846;
+  --focus: #60a5fa;
+  --bar-bg: #1c2431;
+  --bar-ink: #f3f5f8;
+  --bar-muted: #a9b3c2;
+  --bar-control: #2b3545;
+  --bar-control-hover: #3a4558;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
 html,
 body {
   margin: 0;
   height: 100%;
-  font-family: system-ui, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.4 system-ui, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- header ---- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 9px 16px;
+  background: var(--bar-bg);
+  color: var(--bar-ink);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.brand-logo {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--accent);
+  font-size: 20px;
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.step {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 18px;
+  background: var(--bar-control);
+  color: var(--bar-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.step:hover { background: var(--bar-control-hover); color: var(--bar-ink); }
+.step[aria-current='step'] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+
+.lang-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--bar-muted);
+}
+
+.lang-switch button {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: none;
+  color: var(--bar-muted);
+  font-weight: 600;
+}
+
+.lang-switch button:hover { color: var(--bar-ink); }
+.lang-switch button[aria-pressed='true'] { color: var(--bar-ink); font-weight: 800; }
+
+.theme-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bar-control);
+}
+
+.theme-toggle span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 16px;
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+:root:not([data-theme='dark']) .theme-toggle .sun,
+[data-theme='dark'] .theme-toggle .moon {
+  background: var(--bar-bg);
+  opacity: 1;
+  filter: none;
+}
+
+.new-project {
+  border: 1px solid var(--bar-control-hover);
+  border-radius: 8px;
+  padding: 7px 14px;
+  background: none;
+  color: var(--bar-ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.new-project:hover { background: var(--bar-control); }
+
+/* ---- screens ---- */
+
+.screens {
+  flex: 1;
+  min-height: 0;
+}
+
+.screen {
+  height: 100%;
+  padding: 10px;
+}
+
+/* Layout option C: code (blocks above Python) on the left, the track on the right. */
+.screen-program {
+  display: grid;
+  grid-template-columns: 55% 1fr;
+  gap: 10px;
+}
+
+.program-code,
+.program-track {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ---- window too small ---- */
+
+.small-screen { display: none; }
+
+@media (width < 1200px) {
+  .small-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--bg);
+  }
+
+  .small-screen p {
+    max-width: 26em;
+    margin: 0;
+    padding: 28px 32px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    font-size: 20px;
+    text-align: center;
+  }
 }
