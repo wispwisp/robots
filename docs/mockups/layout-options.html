@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout Options</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --ink: #1d2330; --muted: #6b7280; --line: #d6d9e0;
+    --c-loop: #5ba55b; --c-logic: #5b80a5; --c-robot: #8e5bd1; --c-sens: #d1835b; --c-math: #5b67a5; --c-py: #8a8f99;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; padding: 24px 16px 64px; }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 28px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 28px; }
+  section h2 { margin: 0 0 4px; font-size: 18px; }
+  section > p { margin: 0 0 14px; color: var(--muted); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: #dcfce7; color: #166534; margin-left: 8px; vertical-align: middle; }
+  .pros { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; font-size: 14px; }
+  .pros ul { margin: 4px 0 0; padding-left: 18px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cap { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  @media (max-width: 700px) { .pros, .pair { grid-template-columns: 1fr; } }
+
+  /* ---- mock screen (scaled 1366x768) ---- */
+  .screen { container-type: inline-size; aspect-ratio: 1366 / 768; width: 100%; border: 2px solid #2b3240; border-radius: 8px;
+            overflow: hidden; display: flex; flex-direction: column; background: #e9edf2; }
+  .screen > * { font-size: max(1.15cqw, 5px); }
+  .bar { display: flex; align-items: center; gap: 2em; background: #263244; color: #fff; padding: .6em 1.2em; }
+  .bar nav { display: flex; gap: .4em; flex: 1; }
+  .bar nav span { padding: .2em .9em; border-radius: 99px; background: #3a475c; color: #c9d2e0; }
+  .bar nav span.on { background: #f59e0b; color: #1d2330; font-weight: 700; }
+  .bar .lang { color: #c9d2e0; }
+  .bar .lang b { color: #fff; }
+  .body { flex: 1; display: grid; gap: .6em; padding: .6em; min-height: 0; }
+  .pane { background: #fff; border: 1px solid #cfd5de; border-radius: .5em; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .pane > h3 { margin: 0; font-size: 1em; padding: .35em .8em; background: #f1f3f6; border-bottom: 1px solid #e1e5eb; color: #4b5563; font-weight: 600; }
+  .pane > .content { flex: 1; min-height: 0; overflow: hidden; display: flex; }
+
+  /* blocks */
+  .blocks { display: flex; flex: 1; }
+  .tool { display: flex; flex-direction: column; gap: .3em; padding: .5em; background: #f7f8fa; border-right: 1px solid #e1e5eb; }
+  .cat { padding: .25em .6em; border-left: .4em solid; border-radius: .2em; background: #fff; white-space: nowrap; }
+  .ws { flex: 1; padding: .8em; background-image: radial-gradient(#dfe3ea 1px, transparent 1px); background-size: 1.4em 1.4em; }
+  .b { color: #fff; border-radius: .35em; padding: .3em .6em; margin: .25em 0; width: max-content; max-width: 100%; }
+  .b .b { margin-left: 1em; }
+  .b i { font-style: normal; background: rgba(255,255,255,.25); padding: 0 .4em; border-radius: .3em; }
+  .loop { background: var(--c-loop); } .logic { background: var(--c-logic); } .robot { background: var(--c-robot); }
+  .c-loop { border-color: var(--c-loop); } .c-logic { border-color: var(--c-logic); } .c-robot { border-color: var(--c-robot); }
+  .c-sens { border-color: var(--c-sens); } .c-math { border-color: var(--c-math); } .c-py { border-color: var(--c-py); }
+
+  /* python */
+  .py { margin: 0; padding: .7em 1em; font: 1em/1.45 ui-monospace, Consolas, monospace; background: #1f2430; color: #e6e6e6; flex: 1; white-space: pre; }
+  .py .k { color: #c792ea; } .py .s { color: #c3e88d; } .py .n { color: #f78c6c; }
+
+  /* sim */
+  .sim { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .simbar { display: flex; gap: .4em; padding: .4em; align-items: center; border-bottom: 1px solid #e1e5eb; }
+  .simbar .sel { padding: .2em .6em; border: 1px solid #cfd5de; border-radius: .3em; flex: 1; }
+  .btn { padding: .2em .8em; border-radius: .3em; background: #e5e7eb; white-space: nowrap; }
+  .btn.go { background: #16a34a; color: #fff; font-weight: 700; }
+  .track { display: block; width: 100%; flex: 1; min-height: 0; background: #fafaf7; }
+  .readings { display: grid; grid-template-columns: auto auto 1fr; gap: .1em .8em; padding: .5em .8em; border-top: 1px solid #e1e5eb; }
+  .readings .v { font-weight: 700; font-family: ui-monospace, monospace; }
+  .dot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; margin-right: .3em; vertical-align: -.05em; }
+
+  /* assembly */
+  .asm { display: grid; grid-template-columns: 22% 1fr 26%; gap: .6em; flex: 1; padding: .6em; }
+  .part { display: flex; align-items: center; gap: .6em; padding: .6em; margin: .5em; border: 1px dashed #b8c0cc; border-radius: .4em; background: #fff; cursor: grab; }
+  .hint { margin: .8em; color: #6b7280; }
+  .slotlist { padding: .4em .8em; }
+  .slotlist div { display: flex; justify-content: space-between; padding: .3em 0; border-bottom: 1px solid #eef0f3; }
+  .next { margin: .8em; padding: .5em; text-align: center; background: #f59e0b; border-radius: .4em; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Screen layout options</h1>
+  <p class="lead">Mockups drawn at the proportions of a 1366×768 school laptop. Labels show the Russian UI; the Kazakh UI has the same layout. Pick A, B or C in the terminal.</p>
+
+  <section>
+    <h2>Step 1 — Assembly (the same in all options)</h2>
+    <p>The student drags sensors from the tray onto the five slots. Slot positions are real: they decide where each sensor looks.</p>
+    <div class="screen">
+      <div class="bar"><b>🤖 Робо-трасса</b><nav><span class="on">1 Сборка</span><span>2 Программа</span></nav><span class="lang"><b>RU</b> | ҚАЗ</span></div>
+      <div class="asm">
+        <div class="pane"><h3>Детали</h3>
+          <div>
+            <div class="part"><span class="dot" style="background:#111"></span>Датчик линии</div>
+            <div class="part"><span class="dot" style="background:#3b82f6"></span>Датчик расстояния</div>
+            <div class="part"><span class="dot" style="background:linear-gradient(90deg,#ef4444,#22c55e)"></span>Датчик цвета</div>
+            <div class="hint">Перетащи датчик в слот на роботе</div>
+          </div>
+        </div>
+        <div class="pane"><h3>Робот (вид сверху)</h3>
+          <svg viewBox="0 0 300 220" style="flex:1;width:100%">
+            <text x="150" y="16" text-anchor="middle" font-size="9" fill="#6b7280">▲ вперёд</text>
+            <rect x="95" y="40" width="110" height="150" rx="14" fill="#cbd5e1" stroke="#475569" stroke-width="2"/>
+            <rect x="78" y="120" width="16" height="44" rx="4" fill="#334155"/>
+            <rect x="206" y="120" width="16" height="44" rx="4" fill="#334155"/>
+            <text x="86" y="176" text-anchor="middle" font-size="7" fill="#475569">мотор</text>
+            <text x="214" y="176" text-anchor="middle" font-size="7" fill="#475569">мотор</text>
+            <!-- slots -->
+            <g font-size="7" text-anchor="middle" fill="#334155">
+              <circle cx="115" cy="52" r="10" fill="#111" stroke="#f59e0b" stroke-width="2"/><text x="115" y="34">перед-лево</text>
+              <circle cx="150" cy="48" r="10" fill="#3b82f6" stroke="#f59e0b" stroke-width="2"/><text x="150" y="30" dy="-2">перед-центр</text>
+              <circle cx="185" cy="52" r="10" fill="#111" stroke="#f59e0b" stroke-width="2"/><text x="185" y="34">перед-право</text>
+              <circle cx="110" cy="92" r="10" fill="#fff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="3 2"/><text x="66" y="95">лево</text>
+              <circle cx="190" cy="92" r="10" fill="#22c55e" stroke="#f59e0b" stroke-width="2"/><text x="234" y="95">право</text>
+            </g>
+          </svg>
+        </div>
+        <div class="pane"><h3>Слоты</h3>
+          <div class="slotlist">
+            <div><span>перед-лево</span><b>линия</b></div>
+            <div><span>перед-центр</span><b>расстояние</b></div>
+            <div><span>перед-право</span><b>линия</b></div>
+            <div><span>лево</span><span style="color:#9ca3af">пусто</span></div>
+            <div><span>право</span><b>цвет</b></div>
+          </div>
+          <div class="next">Далее: программа →</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>A — Step-by-step wizard</h2>
+    <p>Three full-screen steps: Assembly → Program → Track. Blocks and Python share the Program screen; the Track screen is just the robot and sensors.</p>
+    <div class="pair">
+      <div>
+        <div class="screen">
+          <div class="bar"><b>🤖</b><nav><span>1 Сборка</span><span class="on">2 Программа</span><span>3 Трасса</span></nav><span class="lang"><b>RU</b> | ҚАЗ</span></div>
+          <div class="body" style="grid-template-columns: 62% 1fr">
+            <div class="pane"><h3>Блоки</h3><div class="content" data-use="t-blocks"></div></div>
+            <div class="pane"><h3>Python</h3><div class="content" data-use="t-python"></div></div>
+          </div>
+        </div>
+        <p class="cap">Step 2 — Program</p>
+      </div>
+      <div>
+        <div class="screen">
+          <div class="bar"><b>🤖</b><nav><span>1 Сборка</span><span>2 Программа</span><span class="on">3 Трасса</span></nav><span class="lang"><b>RU</b> | ҚАЗ</span></div>
+          <div class="body" style="grid-template-columns: 1fr">
+            <div class="pane"><div class="content" data-use="t-sim"></div></div>
+          </div>
+        </div>
+        <p class="cap">Step 3 — Track</p>
+      </div>
+    </div>
+    <div class="pros">
+      <div><b>For</b><ul><li>Most room for each part.</li><li>The video follows the three steps one-to-one.</li></ul></div>
+      <div><b>Against</b><ul><li>The program is hidden while the robot runs; fixing a bug means switching screens back and forth.</li><li>Students never see code and robot together.</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>B — Three columns</h2>
+    <p>After assembly, one screen: Blocks | Python | Track, side by side.</p>
+    <div class="screen">
+      <div class="bar"><b>🤖 Робо-трасса</b><nav><span>1 Сборка</span><span class="on">2 Программа</span></nav><span class="lang"><b>RU</b> | ҚАЗ</span></div>
+      <div class="body" style="grid-template-columns: 37% 23% 1fr">
+        <div class="pane"><h3>Блоки</h3><div class="content" data-use="t-blocks"></div></div>
+        <div class="pane"><h3>Python</h3><div class="content" data-use="t-python"></div></div>
+        <div class="pane"><div class="content" data-use="t-sim"></div></div>
+      </div>
+    </div>
+    <div class="pros">
+      <div><b>For</b><ul><li>Everything visible at once.</li></ul></div>
+      <div><b>Against</b><ul><li>Cramped at 1366×768: the block area is narrow, the Python column barely fits a line, and the track is small.</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>C — Code on the left, track on the right <span class="tag">Recommended</span></h2>
+    <p>After assembly, one screen: blocks above their Python on the left; the track with live sensor readings on the right.</p>
+    <div class="screen">
+      <div class="bar"><b>🤖 Робо-трасса</b><nav><span>1 Сборка</span><span class="on">2 Программа</span></nav><span class="lang"><b>RU</b> | ҚАЗ</span></div>
+      <div class="body" style="grid-template-columns: 55% 1fr">
+        <div style="display:grid;grid-template-rows: 60% 1fr;gap:.6em;min-height:0">
+          <div class="pane"><h3>Блоки</h3><div class="content" data-use="t-blocks"></div></div>
+          <div class="pane"><h3>Python — тот же код</h3><div class="content" data-use="t-python"></div></div>
+        </div>
+        <div class="pane"><div class="content" data-use="t-sim"></div></div>
+      </div>
+    </div>
+    <div class="pros">
+      <div><b>For</b><ul><li>Code and robot are visible together: edit, press Run, watch, fix.</li><li>Python directly under the blocks makes the "same program" link obvious.</li><li>The track keeps a good size.</li></ul></div>
+      <div><b>Against</b><ul><li>The block area is shorter; long programs scroll. The tracks need programs of about 10–20 blocks, so this rarely matters.</li></ul></div>
+    </div>
+  </section>
+</main>
+
+<template id="t-blocks">
+  <div class="blocks">
+    <div class="tool">
+      <div class="cat c-robot">Робот</div><div class="cat c-sens">Датчики</div><div class="cat c-logic">Логика</div>
+      <div class="cat c-loop">Циклы</div><div class="cat c-math">Числа</div><div class="cat c-py">Python</div>
+    </div>
+    <div class="ws">
+      <div class="b loop">повторять всегда
+        <div class="b logic">если <i>линия · перед-лево</i>
+          <div class="b robot">моторы: лев <i>0</i> прав <i>50</i></div>
+        </div>
+        <div class="b logic">иначе если <i>линия · перед-право</i>
+          <div class="b robot">моторы: лев <i>50</i> прав <i>0</i></div>
+        </div>
+        <div class="b logic">иначе
+          <div class="b robot">моторы: лев <i>50</i> прав <i>50</i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="t-python">
+<pre class="py"><span class="k">from</span> robot <span class="k">import</span> *
+
+<span class="k">while</span> <span class="k">True</span>:
+    <span class="k">if</span> line(<span class="s">"front_left"</span>):
+        motors(<span class="n">0</span>, <span class="n">50</span>)
+    <span class="k">elif</span> line(<span class="s">"front_right"</span>):
+        motors(<span class="n">50</span>, <span class="n">0</span>)
+    <span class="k">else</span>:
+        motors(<span class="n">50</span>, <span class="n">50</span>)</pre>
+</template>
+
+<template id="t-sim">
+  <div class="sim">
+    <div class="simbar"><span class="sel">Трасса: 1. Первые шаги ▾</span><span class="btn go">▶ Запуск</span><span class="btn">■ Стоп</span><span class="btn">↺ Сброс</span></div>
+    <svg class="track" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid meet">
+      <path d="M30 200 C 90 200, 80 60, 160 60 S 230 180, 290 160 S 360 60, 370 40" stroke="#111" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <rect x="14" y="186" width="30" height="28" fill="none" stroke="#9ca3af" stroke-dasharray="3 3"/>
+      <text x="29" y="226" font-size="9" text-anchor="middle" fill="#6b7280">старт</text>
+      <rect x="350" y="20" width="40" height="32" fill="#22c55e" opacity=".85"/>
+      <text x="370" y="64" font-size="9" text-anchor="middle" fill="#15803d">финиш</text>
+      <g transform="translate(146 56)">
+        <line x1="14" y1="0" x2="70" y2="0" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="3 2" opacity=".7"/>
+        <rect x="-14" y="-11" width="28" height="22" rx="4" fill="#cbd5e1" stroke="#475569" stroke-width="1.5"/>
+        <rect x="-8" y="-15" width="12" height="4" rx="1" fill="#334155"/>
+        <rect x="-8" y="11" width="12" height="4" rx="1" fill="#334155"/>
+        <circle cx="13" cy="-7" r="2.6" fill="#111" stroke="#f59e0b"/>
+        <circle cx="14" cy="0" r="2.6" fill="#3b82f6" stroke="#f59e0b"/>
+        <circle cx="13" cy="7" r="2.6" fill="#111" stroke="#f59e0b"/>
+        <circle cx="5" cy="9" r="2.4" fill="#22c55e" stroke="#f59e0b"/>
+      </g>
+    </svg>
+    <div class="readings">
+      <span><span class="dot" style="background:#111"></span>перед-лево</span><span>линия</span><span class="v">нет · яркость 91</span>
+      <span><span class="dot" style="background:#111"></span>перед-право</span><span>линия</span><span class="v">ДА · яркость 14</span>
+      <span><span class="dot" style="background:#3b82f6"></span>перед-центр</span><span>расстояние</span><span class="v">74 см</span>
+      <span><span class="dot" style="background:#22c55e"></span>право</span><span>цвет</span><span class="v">белый</span>
+      <span>⏱ время</span><span></span><span class="v">00:07.4</span>
+    </div>
+  </div>
+</template>
+
+<script>
+  document.querySelectorAll('[data-use]').forEach(el => {
+    el.appendChild(document.getElementById(el.dataset.use).content.cloneNode(true));
+  });
+</script>
+</body>
+</html>
