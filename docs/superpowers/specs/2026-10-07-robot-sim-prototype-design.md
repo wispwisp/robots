@@ -155,9 +155,12 @@ syntax error.
 ### Python output rules
 Generated Python must look like what a teacher would write. Where Blockly's
 default output doesn't, it is customised. Known cases: function bodies get
-`global x` only for variables the function assigns (not every program
-variable); counter changes are emitted as `x += n`. When reading Python,
-`global` statements produce no block.
+`global x` only for variables the function assigns with "set"/"change"
+blocks (not every program variable, and never loop counters, which stay
+local); counter changes are emitted as `x += n`. When reading Python,
+`global` names the generator will regenerate produce no block; any other
+`global` names are kept as a Python-code line so the program's meaning
+doesn't change.
 
 ### Synchronisation
 - Blocks edited → Python is regenerated immediately (formatting normalised).
