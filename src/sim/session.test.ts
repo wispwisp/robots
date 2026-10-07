@@ -51,8 +51,8 @@ test('a loop that only polls a sensor still sees the world move', async () => {
   const s = new Session(getTrack('barrier'), REFERENCE_ASSEMBLY, source);
   s.world.pose = { x: 60, y: 100, heading: 0 }; // driving straight at the closed barrier (x = 135)
   for (let i = 0; i < 2000 && s.world.time < 5; i++) await s.step();
-  expect(s.world.time).toBeGreaterThanOrEqual(5);
-  expect(s.outcome).toBe('running'); expect(s.world.motors).toEqual({ left: 0, right: 0 });
+  expect(s.program.error).toBeNull(); expect(s.outcome).toBe('running');
+  expect(s.world.time).toBeGreaterThanOrEqual(5); expect(s.world.motors).toEqual({ left: 0, right: 0 });
   expect(readSensor(s.world, 'distance', 'front_center')).toBe(20);
 });
 

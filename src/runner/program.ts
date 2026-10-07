@@ -28,6 +28,14 @@ const SENSORS: SensorFunction[] = ['line', 'brightness', 'distance', 'color'];
 // Thrown from the suspension handler to abandon a stopped program without running more Python.
 class StopSignal {}
 
+// The data of a suspension that ends a step. Python continues with `result`, or `error` is raised.
+interface StepEnd {
+  type: typeof STEP;
+  finish: () => unknown;
+  result?: unknown;
+  error?: unknown;
+}
+
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(r => { resolve = r; });
@@ -40,6 +48,7 @@ export class Program {
   private _error: ProgramError | null = null;
   private waitLeft = 0;
   private reads = 0;                   // sensor reads in the current step
+  private stepEnd: StepEnd | null = null; // the robot call that ended the last step, finished by advance()
   private gate = deferred();           // opened to let Python continue from its current pause
   private pause = deferred<boolean>(); // resolved when Python pauses or the program ends: is the step complete?
   private sensorFailure: { error: SensorError; raised: unknown } | null = null;
@@ -62,9 +71,27 @@ export class Program {
     }
     if (this._state !== 'idle' && this._state !== 'running') return true;
     this.pause = deferred<boolean>();
-    if (this._state === 'idle') this.start();
-    else this.gate.resolve();
+    if (this._state === 'idle') {
+      this.start();
+    } else {
+      this.finishStepEnd();
+      this.gate.resolve();
+    }
     return this.pause.promise;
+  }
+
+  // Finishes the robot call that ended the last step (e.g. a read deferred by the read limit), now that
+  // the world has moved on. It runs here, before Python resumes, because Skulpt times the resume:
+  // a resume slower than YIELD_MS would make Skulpt yield there and lose the call's value.
+  private finishStepEnd(): void {
+    const end = this.stepEnd;
+    this.stepEnd = null;
+    if (!end) return;
+    try {
+      end.result = end.finish();
+    } catch (e) {
+      end.error = e;
+    }
   }
 
   // Halts the program where it is paused; no more Python runs after this.
@@ -127,12 +154,17 @@ export class Program {
     return this.endStep(() => sk().builtin.none.none$);
   }
 
-  // Ends the step: Python pauses here until the next advance(), then continues with resume().
-  private endStep(resume: () => any): any {
+  // Ends the step: Python pauses here until the next advance(), which calls `finish`; Python then
+  // continues with its result, or its error is raised. resume() itself does no work (see finishStepEnd).
+  private endStep(finish: () => unknown): any {
     this.reads = 0;
+    const end: StepEnd = this.stepEnd = { type: STEP, finish };
     const susp = new (sk().misceval.Suspension)();
-    susp.data = { type: STEP };
-    susp.resume = resume;
+    susp.data = end;
+    susp.resume = () => {
+      if (end.error) throw end.error;
+      return end.result;
+    };
     return susp;
   }
 

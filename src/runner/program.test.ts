@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import { fakeIO, run } from '../test/fakeIO';
+import { SensorError } from '../sim/sensors';
 import { Program } from './program';
 
 const DT = 1 / 60;
@@ -92,6 +93,26 @@ test('the 101st read without a command ends the step first, then reads the new s
   const p = new Program('v = []\nfor i in range(101):\n    v.append(brightness("front_left"))\nprint(v[0], v[99], v[100])\n', io);
   for (let i = 0; i < 1000 && io.printed.length === 0; i++) if (await p.advance(DT)) completed++;
   expect(io.printed).toEqual(['0 0 1']);
+});
+
+test('a slow 101st read still gives its value to Python', async () => {
+  let completed = 0; let reads = 0;
+  const read = () => {
+    if (++reads === 101) { const end = Date.now() + 6; while (Date.now() < end); } // longer than YIELD_MS
+    return completed;
+  };
+  const io = { ...fakeIO(), read };
+  const p = new Program('v = []\nfor i in range(101):\n    v.append(brightness("front_left"))\nprint(v[0], v[99], v[100])\n', io);
+  for (let i = 0; i < 1000 && io.printed.length === 0 && !p.error; i++) if (await p.advance(DT)) completed++;
+  expect(p.error).toBeNull(); expect(io.printed).toEqual(['0 0 1']);
+});
+
+test('a sensor error on the 101st read is reported at that read', async () => {
+  let reads = 0;
+  const read = (_fn: string, slot: string) => { if (++reads === 101) throw new SensorError(slot, 'line'); return 0; };
+  const p = new Program('for i in range(101):\n    brightness("left")\n', { ...fakeIO(), read });
+  await run(p, 3);
+  expect(p.error).toMatchObject({ kind: 'SensorError', line: 2, slot: 'left', needed: 'line' });
 });
 
 test('runtime errors carry kind, line and name', async () => {
