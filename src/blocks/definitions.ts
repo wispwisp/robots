@@ -2,7 +2,7 @@
 // slot and colour labels are read from i18n when a block is created.
 import { registerFieldMultilineInput } from '@blockly/field-multilineinput';
 import * as Blockly from 'blockly/core';
-import 'blockly/blocks';
+import { loops } from 'blockly/blocks';
 import { colorLabel, slotLabel } from '../i18n';
 import { SLOT_NAMES } from '../robot/robot';
 import type { ColorName } from '../tracks/surface';
@@ -106,6 +106,8 @@ export function registerBlocks(): void {
       },
     };
   }
+  // Otherwise Blockly disables break/continue inside our loops as "not in a loop".
+  for (const type of ['controls_forever', 'controls_while', 'py_for_range']) loops.loopTypes.add(type);
   // Python allows statements after break/continue, so blocks can go below them too.
   const flow = Blockly.Blocks.controls_flow_statements;
   const flowInit = flow.init;

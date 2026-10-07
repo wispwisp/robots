@@ -193,6 +193,24 @@ test('Kazakh: Blockly and block texts, no tooltips; switching back restores Russ
   expect(Blockly.Msg.ROBOT_STOP).toBe(ru.blocks.ROBOT_STOP);
 });
 
+// On a rendered workspace Blockly disables break/continue that it doesn't see inside a loop block.
+test('break and continue count as inside every loop block', async () => {
+  const flowIn = (loop: string) => b(loop, ['py_for_range', 'controls_forEach'].includes(loop) ? varField('i') : {},
+    { DO: [b('controls_flow_statements', { FLOW: 'BREAK' }), b('controls_flow_statements', { FLOW: 'CONTINUE' })] });
+  const cases: [B, string][] = [
+    ...['controls_forever', 'controls_while', 'py_for_range', 'controls_repeat_ext', 'controls_forEach']
+      .map((loop): [B, string] => [flowIn(loop), '    break\n    continue\n']),
+    [b('controls_flow_statements', { FLOW: 'BREAK' }), 'from robot import *\n'], // outside a loop: disabled
+  ];
+  for (const [main, expected] of cases) {
+    const ws = createHeadlessWorkspace();
+    Object.assign(ws, { isDragging: () => false }); // as on a WorkspaceSvg, which makes the check run
+    Blockly.serialization.workspaces.load(program([main]), ws);
+    await new Promise(resolve => setTimeout(resolve, 0)); // let Blockly fire its events
+    expect(blocksToPython(ws).code, String(main.type)).toContain(expected);
+  }
+});
+
 test('any value block fits any value input, as in Python', () => {
   expect(mainCode(b('controls_if', {}, { IF0: num(1) }), b('controls_forEach', varField('ch'), { LIST: b('text', { TEXT: 'ab' }) }),
     b('controls_repeat_ext', {}, { TIMES: b('logic_boolean', { BOOL: 'TRUE' }) })))
