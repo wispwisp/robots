@@ -30,6 +30,8 @@
   --sensor-eye: #ffffff;
   --error: #b91c1c;
   --error-soft: #fee2e2;
+  --go: #16a34a;
+  --go-ink: #ffffff;
 }
 
 [data-theme='dark'] {
@@ -57,6 +59,7 @@
   --sensor-line-edge: #6b788c;
   --error: #fca5a5;
   --error-soft: #3a1d22;
+  --go: #15803d;
 }
 
 * { box-sizing: border-box; }
@@ -309,6 +312,151 @@ button:focus-visible {
   color: var(--muted);
   font-size: 15px;
   font-weight: 600;
+}
+
+/* ---- the track: menu and Run / Stop / Reset, the mat, the run's result and the live readings ---- */
+
+.track-pane { height: 100%; }
+
+.track-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+}
+
+.track-choice {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.track-choice select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+.track-choice select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.track-bar button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.track-bar button:hover:not(:disabled) { background: var(--border); }
+.track-bar button:disabled { opacity: 0.45; cursor: default; }
+.track-bar .run-button { border-color: var(--go); background: var(--go); color: var(--go-ink); font-weight: 700; }
+.track-bar .run-button:hover:not(:disabled) { background: var(--go); filter: brightness(1.1); }
+
+/* The mat keeps its proportions; the readings take the height left under it. */
+.track-box {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 120px;
+  aspect-ratio: 5 / 3;
+  margin: 8px;
+}
+
+.track-box canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* On the mat, which is light in both themes. */
+.banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 22px;
+  border-radius: 12px;
+  background: #dc2626;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 800;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.banner.is-success { background: #16a34a; }
+
+.run-status {
+  margin: 0 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.run-status.is-error { background: var(--error-soft); color: var(--error); }
+
+.readings {
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto 1fr;
+  gap: 24px;
+  min-height: 0;
+  padding: 6px 14px 10px;
+  overflow: auto;
+}
+
+.readings-title {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.readings-sensors {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 2px 10px;
+  align-content: start;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.reading-type { color: var(--muted); }
+.reading-value { font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
+
+.reading-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--sensor-line);
+  box-shadow: 0 0 0 1px var(--sensor-line-edge);
+}
+
+.reading-dot[data-type='distance'] { background: var(--sensor-distance); box-shadow: none; }
+.reading-dot[data-type='color'] { background: linear-gradient(90deg, var(--sensor-red) 50%, var(--sensor-green) 50%); box-shadow: none; }
+
+.output-lines {
+  margin: 0;
+  font: 13px/1.45 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ---- assembly: parts tray | robot | slot list ---- */

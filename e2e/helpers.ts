@@ -1,10 +1,23 @@
 // Shared steps for the end-to-end tests. Each test starts with an empty browser profile, so a new project.
 import { expect, type Page } from '@playwright/test';
+import type { TrackId } from '../src/tracks/tracks';
+import { readSolution, REFERENCE_ASSEMBLY } from '../tests/solutions/reference';
 
 export async function gotoProgram(page: Page): Promise<void> {
   await page.goto('/');
   await page.getByTestId('step-program').click();
   await expect(page.getByTestId('python-editor')).toBeVisible();
+}
+
+// A new project: the reference robot (sensors placed by clicking), the track and its solution typed in; not run.
+export async function setupReference(page: Page, id: TrackId): Promise<void> {
+  page.once('dialog', d => d.accept());
+  await page.goto('/'); await page.getByTestId('new-project').click();
+  for (const [slot, type] of Object.entries(REFERENCE_ASSEMBLY)) {
+    await page.getByTestId(`tray-${type}`).click(); await page.getByTestId(`slot-${slot}`).click();
+  }
+  await page.getByTestId('to-program').click(); await page.getByTestId('track-select').selectOption(id);
+  await setPython(page, readSolution(id));
 }
 
 // Replaces the whole Python text. insertText types it in one go, so CodeMirror doesn't auto-indent it.

@@ -56,6 +56,9 @@ const ui = {
   readingNo: 'нет',
   readingBrightness: 'яркость {value}',
   readingDistance: '{value} см',
+  sensorShort_line: 'линия', // the sensor's type in a readings row, the same word as in its block
+  sensorShort_distance: 'расстояние',
+  sensorShort_color: 'цвет',
   color_black: 'чёрный',
   color_white: 'белый',
   color_red: 'красный',
