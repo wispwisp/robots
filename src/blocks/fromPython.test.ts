@@ -172,3 +172,27 @@ test('list element assignment', () => {
   expect(roundTrip(HEADER + 'xs[i + 1] = -1\n')).toBe(HEADER + 'xs[i + 1] = -1\n');
   expect(types(HEADER + 'xs[0] = 5\n')).toContain('py_list_set');
 });
+
+// Python rejects break/continue outside a loop, and on a rendered workspace Blockly disables such a block
+// (so it would generate nothing). They stay Python code, so the text is kept and running it shows the error.
+test('break and continue outside a loop stay Python code; inside a loop they are blocks', async () => {
+  async function renderedRoundTrip(src: string) {
+    const ws = createHeadlessWorkspace();
+    Object.assign(ws, { isDragging: () => false }); // as on a WorkspaceSvg, which makes Blockly's loop check run
+    Blockly.serialization.workspaces.load(convert(src).blocks, ws);
+    await new Promise(resolve => setTimeout(resolve, 0)); // let Blockly fire its events
+    return blocksToPython(ws).code;
+  }
+  const flow = (src: string) => types(src).filter(type => type === 'controls_flow_statements' || type === 'python_code');
+  for (const src of [HEADER + 'if a:\n    break\nstop()\n', HEADER + 'def go():\n    continue\n\ngo()\n',
+    HEADER + 'while a:\n    stop()\nbreak\n']) {
+    expect(flow(src), src).toEqual(['python_code']);
+    expect(await renderedRoundTrip(src), src).toBe(src);
+  }
+  const loops = HEADER + 'while True:\n    if a:\n        break\n    continue\nfor i in range(3):\n    def f():\n        break\n'
+    + '    break\ndef go():\n    for _ in range(2):\n        continue\n\ngo()\n';
+  expect(flow(loops)).toEqual(['controls_flow_statements', 'controls_flow_statements', 'controls_flow_statements',
+    'python_code', 'controls_flow_statements']);
+  expect(await renderedRoundTrip(loops)).toBe(HEADER + 'def go():\n    for _ in range(2):\n        continue\n\n'
+    + 'while True:\n    if a:\n        break\n    continue\nfor i in range(3):\n    def f():\n        break\n    break\ngo()\n');
+});

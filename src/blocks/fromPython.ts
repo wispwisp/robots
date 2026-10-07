@@ -28,8 +28,9 @@ type Node = any; // a node of Skulpt's syntax tree
 // A statement's lines `start`…`end`; `cut` is the column where the next statement starts on line `end` (after `;`).
 interface Span { start: number; end: number; col: number; cut?: number }
 
-// Statements that go into a statement input; `end` is the body's last line.
-interface Body { input: string; nodes: Node[]; end: number }
+// Statements that go into a statement input; `end` is the body's last line. `inLoop` is set for a loop body (true)
+// and a function body (false); other bodies are inside a loop when their statement is.
+interface Body { input: string; nodes: Node[]; end: number; inLoop?: boolean }
 
 // A supported statement's block, with its bodies still to convert.
 interface Spec {
@@ -88,6 +89,7 @@ class Converter {
   private readonly comments: Comment[];
   private readonly commentLines: Set<number>; // lines holding only a comment
   private nextComment = 0;
+  private inLoop = false; // break and continue are allowed
   private count = 0;
   private readonly procedures = new Map<string, Node>(); // the `def`s that become function blocks
 
@@ -110,7 +112,7 @@ class Converter {
       const span = this.span(node, nodes[i + 1], this.lines.length);
       if (kind(node) === 'FunctionDef' && this.procedures.get(node.name.v) === node) {
         // Comments above a function are not flushed here: they go to the start of its body.
-        const bodies = [{ input: 'STACK', nodes: node.body, end: span.end }];
+        const bodies = [{ input: 'STACK', nodes: node.body, end: span.end, inLoop: false }];
         const block = this.build({ type: 'procedures_defnoreturn', fields: { NAME: node.name.v }, bodies }, span);
         functions.push({ ...block, x: 0, y });
         y += (span.end - span.start + 2) * ROW_HEIGHT;
@@ -161,10 +163,13 @@ class Converter {
     return block;
   }
 
-  private body({ nodes, end }: Body): Block | undefined {
+  private body({ nodes, end, inLoop = this.inLoop }: Body): Block | undefined {
+    const outer = this.inLoop;
+    this.inLoop = inLoop;
     const out: Block[] = [];
     nodes.forEach((node, i) => this.statement(node, this.span(node, nodes[i + 1], end), out));
     this.flush(end, out); // comments at the end of the body stay in it
+    this.inLoop = outer;
     return chain(out);
   }
 
@@ -189,7 +194,7 @@ class Converter {
         return this.ifSpec(node, span);
       case 'While': {
         if (node.orelse.length) return unsupported();
-        const bodies = [{ input: 'DO', nodes: node.body, end: span.end }];
+        const bodies = [{ input: 'DO', nodes: node.body, end: span.end, inLoop: true }];
         const forever = kind(node.test) === 'NameConstant' && node.test.value === sk().builtin.bool.true$;
         if (forever) return { type: 'controls_forever', bodies };
         return { type: 'controls_while', inputs: { COND: this.expr(node.test) }, bodies };
@@ -197,7 +202,8 @@ class Converter {
       case 'For':
         return this.forSpec(node, span);
       case 'Break':
-      case 'Continue':
+      case 'Continue': // outside a loop: Python's SyntaxError, and Blockly would disable the block
+        if (!this.inLoop) return unsupported();
         return { type: 'controls_flow_statements', fields: { FLOW: kind(node).toUpperCase() } };
       case 'Return':
         return { type: 'py_return', inputs: node.value ? { VALUE: this.expr(node.value) } : {} };
@@ -243,7 +249,7 @@ class Converter {
 
   private forSpec(node: Node, span: Span): Spec {
     if (node.orelse.length || kind(node.target) !== 'Name') return unsupported();
-    const bodies = [{ input: 'DO', nodes: node.body, end: span.end }];
+    const bodies = [{ input: 'DO', nodes: node.body, end: span.end, inLoop: true }];
     const fields = this.variable(node.target);
     if (!isCall(node.iter, 'range')) {
       return { type: 'controls_forEach', fields, inputs: { LIST: this.expr(node.iter) }, bodies };
