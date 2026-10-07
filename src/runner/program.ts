@@ -15,6 +15,9 @@ export interface RobotIO {
 export type ProgramState = 'idle' | 'running' | 'finished' | 'error' | 'stopped';
 
 export const YIELD_MS = 4; // Skulpt yieldLimit: pure Python computation pauses after this many ms
+// Until its first command a program may compute this long without pausing, so that a slow
+// machine (imports, setup code) does not start the run one step late.
+const START_BUDGET_MS = 250;
 
 const STEP = 'robot.step'; // suspension type of a robot command
 const SENSORS: SensorFunction[] = ['line', 'brightness', 'distance', 'color'];
@@ -33,6 +36,8 @@ export class Program {
   private _line: number | null = null;
   private _error: ProgramError | null = null;
   private waitLeft = 0;
+  private startedAt = 0;
+  private commanded = false;  // has the program given its first command yet?
   private gate = deferred();  // opened to let Python continue from its current pause
   private pause = deferred(); // resolved when Python pauses or the program ends
   private sensorFailure: { error: SensorError; raised: unknown } | null = null;
@@ -60,10 +65,12 @@ export class Program {
     if (this._state !== 'idle' && this._state !== 'running') return;
     this._state = 'stopped';
     this.gate.resolve();
+    this.pause.resolve(); // releases an advance() waiting on a real-time pause such as time.sleep
   }
 
   private start(): void {
     this._state = 'running';
+    this.startedAt = Date.now();
     configureSkulpt({ output: () => {}, yieldLimit: YIELD_MS }); // print is our own built-in
     this.installBuiltins();
     sk().misceval.asyncToPromise(
@@ -86,10 +93,26 @@ export class Program {
   private onSuspension(susp: any): Promise<unknown> | null {
     this._line = stdinLine(susp) ?? this._line;
     if (this._state === 'stopped') throw new StopSignal();
-    if (susp.data.type !== STEP && susp.data.type !== 'Sk.yield') return null; // e.g. time.sleep: Skulpt waits
-    const gate = this.gate = deferred();
+    const type = susp.data.type;
+    if (type === 'Sk.promise') { // e.g. time.sleep: waits in real time, not for the next step
+      const settled = susp.data.promise.then(
+        (v: unknown) => { susp.data.result = v; },
+        (e: unknown) => { susp.data.error = e; },
+      );
+      return this.resumeAfter(settled, susp);
+    }
+    if (type === 'Sk.yield' && !this.commanded && Date.now() - this.startedAt < START_BUDGET_MS) {
+      return this.resumeAfter(Promise.resolve(), susp);
+    }
+    if (type !== STEP && type !== 'Sk.yield') return null;
+    this.gate = deferred();
     this.pause.resolve();
-    return gate.promise.then(() => {
+    return this.resumeAfter(this.gate.promise, susp);
+  }
+
+  // Continues Python once `ready` settles, unless the program has been stopped meanwhile.
+  private resumeAfter(ready: Promise<unknown>, susp: any): Promise<unknown> {
+    return ready.then(() => {
       if (this._state === 'stopped') throw new StopSignal();
       return susp.resume();
     });
@@ -97,6 +120,7 @@ export class Program {
 
   // A robot command does its effect and ends the step: Python pauses until the next advance().
   private command(effect: () => void): any {
+    this.commanded = true;
     if (this._state !== 'stopped') effect();
     const susp = new (sk().misceval.Suspension)();
     susp.data = { type: STEP };

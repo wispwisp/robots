@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { fakeIO, run } from '../test/fakeIO';
-import { Program } from './program';
+import { Program, YIELD_MS } from './program';
 
 test('one loop iteration per step', async () => {
   const io = fakeIO(); const p = new Program('while True:\n    motors(10, 20)\n', io);
@@ -31,6 +31,25 @@ test('a stopped program runs no more Python, so it cannot affect the next one', 
   await run(p2, 3);
   expect(p1.state).toBe('stopped'); expect(io1.motorCalls.length).toBe(2);
   expect(io2.motorCalls).toEqual([[2, 2], [2, 2], [2, 2]]);
+});
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+test('a program stopped inside time.sleep is released and cannot affect the next one', async () => {
+  const io1 = fakeIO(); const p1 = new Program('import time\ntime.sleep(0.1)\nmotors(9, 9)\n', io1);
+  const firstStep = p1.advance(1 / 60);
+  await sleep(20); p1.stop();
+  const stoppedAt = Date.now(); await firstStep; expect(Date.now() - stoppedAt).toBeLessThan(40);
+  const io2 = fakeIO(); const p2 = new Program('while True:\n    motors(2, 2)\n', io2);
+  await run(p2, 1); await sleep(150); // past the end of the sleep
+  expect(io1.motorCalls).toEqual([]); expect(io2.motorCalls).toEqual([[2, 2]]);
+});
+
+test('a slow start still gives the first command in the first step', async () => {
+  const slowRead = () => { const end = Date.now() + 2 * YIELD_MS; while (Date.now() < end); return false; };
+  const io = { ...fakeIO(), read: slowRead };
+  const p = new Program('for i in range(3):\n    line("front_left")\nmotors(1, 1)\n', io);
+  await run(p, 1); expect(io.motorCalls).toEqual([[1, 1]]);
 });
 
 test('runtime errors carry kind, line and name', async () => {
