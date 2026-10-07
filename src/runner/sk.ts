@@ -5,6 +5,7 @@ export function sk(): any {
 }
 
 export function configureSkulpt(opts: { output: (s: string) => void; yieldLimit?: number }): void {
+  patchWakeCheck();
   sk().configure({
     __future__: sk().python3,
     output: opts.output,
@@ -18,4 +19,23 @@ export function configureSkulpt(opts: { output: (s: string) => void; yieldLimit?
       throw `File not found: '${path}'`;
     },
   });
+}
+
+// Skulpt 1.2.0 defect: when a suspended frame wakes, it checks its time slice before it uses the value
+// (or the suspension) that its resumed call returned. If the resume took longer than yieldLimit (a
+// stall, or a resumed inner function computing for a while), the frame yields there and the value is
+// lost. Each compiled frame therefore skips that one check right after waking.
+function patchWakeCheck(): void {
+  const Sk = sk();
+  if (Sk.compile.$wakePatched) return;
+  const compile = Sk.compile;
+  Sk.compile = (...args: unknown[]) => {
+    const compiled = compile(...args);
+    compiled.code = compiled.code
+      .replaceAll('var $wakeFromSuspension = function() {', 'var $woke = false;var $wakeFromSuspension = function() {$woke = true;')
+      .replaceAll('if ($dateNow - Sk.lastYield > Sk.yieldLimit) {', 'if (!$woke && $dateNow - Sk.lastYield > Sk.yieldLimit) {')
+      .replaceAll('$susp.optional = true;return $susp;}', '$susp.optional = true;return $susp;}$woke = false;');
+    return compiled;
+  };
+  Sk.compile.$wakePatched = true;
 }

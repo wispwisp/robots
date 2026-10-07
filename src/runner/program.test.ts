@@ -115,6 +115,13 @@ test('a sensor error on the 101st read is reported at that read', async () => {
   expect(p.error).toMatchObject({ kind: 'SensorError', line: 2, slot: 'left', needed: 'line' });
 });
 
+test('a function that computes across several time slices still returns its result', async () => {
+  const io = fakeIO();
+  const p = new Program('def count():\n    x = 0\n    while x < 20000:\n        x += 1\n    return x\nprint(count())\n', io);
+  for (let i = 0; i < 10_000 && io.printed.length === 0 && !p.error; i++) await p.advance(DT);
+  expect(p.error).toBeNull(); expect(io.printed).toEqual(['20000']);
+});
+
 test('runtime errors carry kind, line and name', async () => {
   const p = new Program('x = 1\nmotor(1, 2)\n', fakeIO()); await run(p, 1);
   expect(p.state).toBe('error'); expect(p.error).toMatchObject({ kind: 'NameError', line: 2, name: 'motor' });
