@@ -61,6 +61,9 @@ const isCall = (node: Node, name: string) => kind(node) === 'Call' && kind(node.
 const indent = (line: string) => line.length - line.trimStart().length;
 // A call's arguments, when it has no keyword arguments (Skulpt gives null for a call without arguments).
 const positional = (call: Node): Node[] => call.keywords?.length ? unsupported() : call.args ?? [];
+const paramNames = (def: Node): string[] => def.args.args.map((arg: Node) => arg.arg.v);
+// Inputs ADD0, ADD1, … (or another prefix) holding the blocks.
+const numbered = (prefix: string, blocks: Block[]) => Object.fromEntries(blocks.map((block, i) => [prefix + i, block]));
 
 // A literal that JavaScript holds exactly (no big integers, no complex numbers, no inf).
 function numberValue(node: Node): number {
@@ -92,6 +95,8 @@ class Converter {
   private inLoop = false; // break and continue are allowed
   private count = 0;
   private readonly procedures = new Map<string, Node>(); // the `def`s that become function blocks
+  private finalReturn: Node = null; // the `return v` that ends the function being converted
+  private returned?: Block; // its value, for the RETURN input
 
   constructor(source: string) {
     this.lines = source.split('\n');
@@ -112,9 +117,7 @@ class Converter {
       const span = this.span(node, nodes[i + 1], this.lines.length);
       if (kind(node) === 'FunctionDef' && this.procedures.get(node.name.v) === node) {
         // Comments above a function are not flushed here: they go to the start of its body.
-        const bodies = [{ input: 'STACK', nodes: node.body, end: span.end, inLoop: false }];
-        const block = this.build({ type: 'procedures_defnoreturn', fields: { NAME: node.name.v }, bodies }, span);
-        functions.push({ ...block, x: 0, y });
+        functions.push({ ...this.procedure(node, span), x: 0, y });
         y += (span.end - span.start + 2) * ROW_HEIGHT;
       } else {
         this.statement(node, span, main);
@@ -126,11 +129,31 @@ class Converter {
     return { blocks: { languageVersion: 0, blocks: [...functions, { ...start, x: 0, y }] } };
   }
 
-  // A top-level `def` that becomes a function block: no parameters, no decorators, no returned value.
+  // A top-level `def` that becomes a function block: plain parameters, no decorators, no annotations.
   private isProcedure(node: Node): boolean {
+    if (kind(node) !== 'FunctionDef') return false;
     const { args } = node;
-    return kind(node) === 'FunctionDef' && isValidName(node.name.v) && !node.decorator_list.length && !node.returns
-      && !args.args.length && !args.vararg && !args.kwonlyargs.length && !args.kwarg && !returnsValue(node.body);
+    const params = paramNames(node);
+    return isValidName(node.name.v) && !node.decorator_list.length && !node.returns
+      && params.every(isValidName) && new Set(params).size === params.length // Python rejects a repeated name
+      && !args.args.some((arg: Node) => arg.annotation) && !args.defaults.length
+      && !args.vararg && !args.kwonlyargs.length && !args.kwarg;
+  }
+
+  // A function that returns a value somewhere is a procedures_defreturn. If it ends with `return v`,
+  // v goes into the RETURN input (see spec()); any other return is a return block.
+  private procedure(node: Node, span: Span): Block {
+    const last = node.body[node.body.length - 1];
+    this.finalReturn = kind(last) === 'Return' && last.value ? last : null;
+    this.returned = undefined;
+    const block = this.build({
+      type: returnsValue(node.body) ? 'procedures_defreturn' : 'procedures_defnoreturn',
+      fields: { NAME: node.name.v },
+      extraState: { params: paramNames(node).map(name => ({ name, id: 'v:' + name })) },
+      bodies: [{ input: 'STACK', nodes: node.body, end: span.end, inLoop: false }],
+    }, span);
+    if (this.returned) (block.inputs ??= {}).RETURN = { block: this.returned };
+    return block;
   }
 
   // One statement into `out`: its block, or a Python-code block with its text when a part of it is unsupported.
@@ -178,6 +201,7 @@ class Converter {
   private spec(node: Node, span: Span): Spec | null {
     switch (kind(node)) {
       case 'Pass':
+      case 'Global': // the generator writes a function's `global` line itself
         return null;
       case 'ImportFrom':
         return node.module?.v === 'robot' && !node.level && node.names.length === 1 && node.names[0].name.v === '*'
@@ -206,6 +230,10 @@ class Converter {
         if (!this.inLoop) return unsupported();
         return { type: 'controls_flow_statements', fields: { FLOW: kind(node).toUpperCase() } };
       case 'Return':
+        if (node === this.finalReturn) { // no block: its value goes into the function block
+          this.returned = this.expr(node.value);
+          return null;
+        }
         return { type: 'py_return', inputs: node.value ? { VALUE: this.expr(node.value) } : {} };
       case 'Expr':
         return this.callSpec(node.value);
@@ -262,9 +290,13 @@ class Converter {
     return { type: 'py_for_range', fields, inputs: { START: start, STOP: stop, STEP: step ?? this.number(1) }, bodies };
   }
 
-  // A robot command, print(x), or a call of one of the program's functions.
+  // A robot command, print(x), x.append(v), or a call of one of the program's functions without a returned value.
   private callSpec(node: Node): Spec {
-    if (kind(node) !== 'Call' || kind(node.func) !== 'Name') return unsupported();
+    if (kind(node) !== 'Call') return unsupported();
+    if (kind(node.func) === 'Attribute' && node.func.attr.v === 'append') {
+      return { type: 'py_list_append', inputs: { LIST: this.expr(node.func.value), VALUE: this.args(node, 1)[0] } };
+    }
+    if (kind(node.func) !== 'Name') return unsupported();
     const name: string = node.func.id.v;
     const command = COMMANDS.get(name);
     if (command) {
@@ -272,11 +304,15 @@ class Converter {
       const args = this.args(node, inputNames.length);
       return { type, inputs: Object.fromEntries(inputNames.map((input, i) => [input, args[i]])) };
     }
-    if (this.procedures.has(name)) {
-      this.args(node, 0);
-      return { type: 'procedures_callnoreturn', extraState: { name, params: [] } };
-    }
-    return unsupported();
+    const def = this.procedures.get(name);
+    if (!def || returnsValue(def.body)) return unsupported();
+    return { type: 'procedures_callnoreturn', ...this.procedureCall(node, def) };
+  }
+
+  // The inputs and extraState of a call of one of the program's functions: one argument for each parameter.
+  private procedureCall(node: Node, def: Node) {
+    const params = paramNames(def);
+    return { inputs: numbered('ARG', this.args(node, params.length)), extraState: { name: def.name.v, params } };
   }
 
   private expr(node: Node): Block {
@@ -312,6 +348,13 @@ class Converter {
         return this.compare(node);
       case 'Call':
         return this.callExpr(node);
+      case 'List': {
+        const items = node.elts.map((item: Node) => this.expr(item));
+        return this.block('lists_create_with', {}, numbered('ADD', items), { itemCount: items.length });
+      }
+      case 'Subscript': // x[i]; a slice stays Python code
+        if (kind(node.slice) !== 'Index') return unsupported();
+        return this.block('py_list_get', {}, { LIST: this.expr(node.value), INDEX: this.expr(node.slice.value) });
       default:
         return unsupported();
     }
@@ -329,16 +372,22 @@ class Converter {
     return this.block('logic_compare', { OP: op }, { A: operand(left, right), B: operand(right, left) });
   }
 
-  // abs(x), round(x), and sensor calls with a slot name.
+  // abs(x), round(x), len(x), sensor calls with a slot name, and calls of the program's functions that return a value.
   private callExpr(node: Node): Block {
     const name: string = kind(node.func) === 'Name' ? node.func.id.v : '';
     if (name === 'abs' || name === 'round') {
       return this.block('py_math_func', { FUNC: name }, { VALUE: this.args(node, 1)[0] });
     }
+    if (name === 'len') return this.block('py_len', {}, { LIST: this.args(node, 1)[0] });
     const sensor = SENSORS.get(name);
     const args = positional(node);
-    if (!sensor || args.length !== 1 || kind(args[0]) !== 'Str' || !SLOT_NAMES.includes(args[0].s.v)) return unsupported();
-    return this.block(sensor, { SLOT: args[0].s.v });
+    if (sensor && args.length === 1 && kind(args[0]) === 'Str' && SLOT_NAMES.includes(args[0].s.v)) {
+      return this.block(sensor, { SLOT: args[0].s.v });
+    }
+    const def = this.procedures.get(name);
+    if (!def || !returnsValue(def.body)) return unsupported();
+    const { inputs, extraState } = this.procedureCall(node, def);
+    return this.block('procedures_callreturn', {}, inputs, extraState);
   }
 
   // A call's positional arguments as blocks: `min`…`max` of them and no keyword arguments.

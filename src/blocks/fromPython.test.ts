@@ -45,7 +45,7 @@ function mainStack(src: string): Json[] {
   return stack;
 }
 
-for (const f of ['robot', 'control', 'math', 'comments', 'fallback'])
+for (const f of ['robot', 'control', 'math', 'comments', 'fallback', 'functions', 'lists'])
   test(`canonical ${f}.py is a fixed point`, () => expect(roundTrip(readFixture(`${f}.py`))).toBe(readFixture(`${f}.py`)));
 test('normalisation', () => {
   expect(roundTrip("from robot import *\n\nx=1\ns = 'a'\n")).toBe('from robot import *\n\nx = 1\ns = "a"\n');
@@ -76,7 +76,7 @@ test('reference solutions become blocks only and stay the same', () => {
 });
 
 test('supported fixtures have no Python-code blocks', () => {
-  for (const f of ['robot', 'control', 'math', 'comments']) expect(types(readFixture(`${f}.py`)), f).not.toContain('python_code');
+  for (const f of ['robot', 'control', 'math', 'comments', 'functions', 'lists']) expect(types(readFixture(`${f}.py`)), f).not.toContain('python_code');
 });
 
 test('Python forms that print alike map to their own blocks', () => {
@@ -94,7 +94,8 @@ const fallbacks = ['import random', 'class Robot:\n    speed = 50', 'd = {"a": 1
   'while n > 0:\n    n -= 1\nelse:\n    stop()', 'for i in range(3):\n    pass\nelse:\n    stop()', 'x *= 2', 'a, b = 1, 2',
   'x = a if b else c', 'x = 1 < y < 3', 'x = a in b', 'x = a is None', 'x = round(a, 2)', 'x = line("middle")', 'x = line(slot)',
   'motors(1)', 'x = 12345678901234567890', 'x = 3j', 'x = +a', 'x = a & b', 'x = f"{a}"', 'foo()', 'for a, b in pairs:\n    pass',
-  'xs[1:] = ys', 'x = y = 1', 'with open("f") as f:\n    pass', '"""Just a string"""'];
+  'xs[1:] = ys', 'x = y = 1', 'with open("f") as f:\n    pass', '"""Just a string"""', 'xs.append(1, 2)', 'xs.extend(ys)',
+  'x = len()', 'x = xs[::2]', '[a, b] = xs'];
 test.each(fallbacks)('falls back: %s', src => {
   expect(mainStack(HEADER + src + '\n')).toMatchObject([{ type: 'python_code', fields: { CODE: src } }]);
   expect(roundTrip(HEADER + src + '\n')).toBe(HEADER + src + '\n');
@@ -195,4 +196,72 @@ test('break and continue outside a loop stay Python code; inside a loop they are
     'python_code', 'controls_flow_statements']);
   expect(await renderedRoundTrip(loops)).toBe(HEADER + 'def go():\n    for _ in range(2):\n        continue\n\n'
     + 'while True:\n    if a:\n        break\n    continue\nfor i in range(3):\n    def f():\n        break\n    break\ngo()\n');
+});
+
+test('function global lines are regenerated, not duplicated', () =>
+  expect(roundTrip('from robot import *\n\ndef go():\n    global speed\n    speed = 5\n\ngo()\n')).toBe('from robot import *\n\ndef go():\n    global speed\n    speed = 5\n\ngo()\n'));
+test('trailing return goes into defreturn', () => {
+  const r = pythonToBlocks('from robot import *\n\ndef twice(a):\n    return a * 2\n\nx = twice(3)\n');
+  expect(r.ok && JSON.stringify(r.blocks)).toContain('"procedures_defreturn"');
+  expect(r.ok && JSON.stringify(r.blocks)).toContain('"procedures_callreturn"');
+});
+test('negative index', () => expect(roundTrip('from robot import *\n\nxs = [1, 2, 3]\nx = xs[-1]\n')).toBe('from robot import *\n\nxs = [1, 2, 3]\nx = xs[-1]\n'));
+test('slice and sort fall back', () => {
+  const r = pythonToBlocks('from robot import *\n\nys = xs[1:]\nxs.sort()\n');
+  expect(r.ok && (JSON.stringify(r.blocks).match(/"python_code"/g) ?? []).length).toBe(2);
+});
+test('every fixture survives blocks → Python → blocks', () => {
+  for (const f of ['robot','control','math','comments','fallback','functions','lists']) {
+    const once = roundTrip(readFixture(`${f}.py`)); expect(roundTrip(once)).toBe(once);
+  }
+});
+
+test('global statements give no block anywhere', () => {
+  expect(roundTrip(HEADER + 'def show():\n    global speed\n    print(speed)\n\nglobal x\nx = 1\n'))
+    .toBe(HEADER + 'def show():\n    print(speed)\n\nx = 1\n');
+});
+
+test('function blocks: parameters, RETURN input, line map', () => {
+  const src = HEADER + 'def clamp(v, top):\n    if v > top:\n        return top\n    return v\n';
+  const r = convert(src);
+  const def = allBlocks(r.blocks).find(block => block.type === 'procedures_defreturn') as any;
+  expect(def.extraState).toEqual({ params: [{ name: 'v', id: 'v:v' }, { name: 'top', id: 'v:top' }] });
+  expect(def.inputs.RETURN.block).toMatchObject({ type: 'variables_get', fields: { VAR: { id: 'v:v', name: 'v' } } });
+  expect(types(src)).toEqual(['procedures_defreturn', 'controls_if', 'logic_compare', 'variables_get', 'variables_get',
+    'py_return', 'variables_get', 'variables_get', 'robot_start']);
+  expect([3, 6].map(line => r.lineToBlock.get(line))).toEqual([def.id, def.id]); // def line, final return
+});
+
+test('the final return: comments stay in the function; an unsupported value or a shared line', () => {
+  expect(roundTrip(HEADER + 'def f(a):\n    print(a)\n    # give back\n    return a  # done\n    # end\n\ny = f(1)\n'))
+    .toBe(HEADER + 'def f(a):\n    print(a)\n    # give back\n    # done\n    # end\n    return a\n\ny = f(1)\n');
+  const unsupported = HEADER + 'def f():\n    return {"a": 1}\n\nx = f()\n';
+  expect(types(unsupported)).toEqual(['procedures_defreturn', 'python_code', 'robot_start', 'variables_set',
+    'procedures_callreturn']);
+  expect(roundTrip(unsupported)).toBe(unsupported);
+  expect(roundTrip(HEADER + 'def f():\n    d = {}; return d\n')).toBe(HEADER + 'def f():\n    d = {}\n    return d\n');
+  expect(roundTrip(HEADER + 'def f(): return 1\n')).toBe(HEADER + 'def f():\n    return 1\n');
+  const sign = HEADER + 'def sign(a):\n    if a < 0:\n        return -1\n    else:\n        return 1\n\nx = sign(-5)\n';
+  expect(types(sign)).not.toContain('python_code');
+  expect(roundTrip(sign)).toBe(sign);
+});
+
+test('calls that function blocks cannot show stay Python code', () => {
+  const defs = HEADER + 'def go():\n    stop()\n\ndef twice(a):\n    return a * 2\n\n';
+  for (const call of ['twice(3)', 'x = go()', 'go(1)', 'x = twice()', 'x = twice(a=3)', 'x = undefined(1)']) {
+    expect(mainStack(defs + call + '\n'), call).toMatchObject([{ type: 'python_code', fields: { CODE: call } }]);
+    expect(roundTrip(defs + call + '\n'), call).toBe(defs + call + '\n');
+  }
+  // These functions stay Python code in the main program, and so do their calls.
+  for (const def of ['def f(a=1):', 'def f(*a):', 'def f(a, *, b):', 'def f(**a):', 'def f(a: int):', 'def f() -> int:',
+    'def f(a, a):']) {
+    expect(types(HEADER + def + '\n    pass\nf()\n'), def).toEqual(['robot_start', 'python_code', 'python_code']);
+  }
+});
+
+test('functions call each other, also before their definition and recursively', () => {
+  const src = HEADER + 'def a():\n    b(1, 2)\n\ndef b(n, m):\n    print(fact(n) + m)\n\n'
+    + 'def fact(n):\n    if n <= 1:\n        return 1\n    return n * fact(n - 1)\n\na()\n';
+  expect(types(src)).not.toContain('python_code');
+  expect(roundTrip(src)).toBe(src);
 });
