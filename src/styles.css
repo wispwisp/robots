@@ -15,6 +15,19 @@
   --bar-muted: #c3ccda;
   --bar-control: #3a475c;
   --bar-control-hover: #4a5870;
+  --accent-soft: #fef3c7;
+  --shadow: rgb(29 35 48 / 0.3);
+  --grid: #e3e8ee;
+  --robot-body: #cbd5e1;
+  --robot-edge: #475569;
+  --robot-wheel: #334155;
+  --slot-empty: #94a3b8;
+  --sensor-line: #1d2330;
+  --sensor-line-edge: #1d2330;
+  --sensor-distance: #3b82f6;
+  --sensor-red: #ef4444;
+  --sensor-green: #22c55e;
+  --sensor-eye: #ffffff;
 }
 
 [data-theme='dark'] {
@@ -31,6 +44,15 @@
   --bar-muted: #a9b3c2;
   --bar-control: #2b3545;
   --bar-control-hover: #3a4558;
+  --accent-soft: #3d3016;
+  --shadow: rgb(0 0 0 / 0.55);
+  --grid: #222a35;
+  --robot-body: #4b5a70;
+  --robot-edge: #93a3b8;
+  --robot-wheel: #0f141b;
+  --slot-empty: #7b8798;
+  --sensor-line: #0b0f14;
+  --sensor-line-edge: #6b788c;
 }
 
 * { box-sizing: border-box; }
@@ -196,6 +218,195 @@ button:focus-visible {
   min-width: 0;
   min-height: 0;
 }
+
+/* ---- panes: a titled box, as in the mockup ---- */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.pane-title {
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ---- assembly: parts tray | robot | slot list ---- */
+
+.screen-assembly {
+  display: grid;
+  grid-template-columns: 22% 1fr 26%;
+  gap: 10px;
+  user-select: none;
+}
+
+.tray-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.tray-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 72px;
+  padding: 10px 14px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+}
+
+.tray-item:hover { border-color: var(--muted); }
+.tray-item[aria-pressed='true'] { border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
+.tray-item .sensor-icon { flex: none; width: 44px; height: 44px; }
+
+.hint {
+  margin: 0 16px 16px;
+  color: var(--muted);
+}
+
+/* The robot drawing is in centimetres, so its font sizes and strokes are too. */
+.robot-svg {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+
+.grid-line { fill: none; stroke: var(--grid); stroke-width: 0.04; }
+.robot-body { fill: var(--robot-body); stroke: var(--robot-edge); stroke-width: 0.15; }
+.robot-wheel { fill: var(--robot-wheel); }
+.robot-svg text { fill: var(--muted); font-size: 0.75px; }
+.robot-svg .slot-label { fill: var(--ink); font-size: 0.8px; font-weight: 600; }
+.robot-svg .motor-label { font-size: 0.65px; }
+
+.slot { cursor: pointer; outline: none; touch-action: none; }
+.slot:not([data-sensor='']) { cursor: grab; }
+.slot-ring { fill: transparent; }
+.slot-empty { fill: var(--surface); stroke: var(--slot-empty); stroke-width: 0.12; stroke-dasharray: 0.3 0.2; }
+.slot.lifted .slot-face { opacity: 0.3; }
+
+/* While a sensor is picked up, every slot shows it can take it. */
+.is-picking .slot-ring {
+  stroke: var(--accent);
+  stroke-width: 0.14;
+  stroke-dasharray: 0.4 0.25;
+  animation: slot-march 1s linear infinite;
+}
+
+.is-picking .slot-empty { fill: var(--accent-soft); stroke: none; }
+.is-picking .slot:hover .slot-ring { stroke-width: 0.24; stroke-dasharray: none; }
+.is-picking .slot:hover .slot-empty { fill: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.slot:focus-visible .slot-ring { stroke: var(--focus); stroke-width: 0.18; stroke-dasharray: none; }
+
+@keyframes slot-march { to { stroke-dashoffset: -0.65; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .is-picking .slot-ring { animation: none; }
+}
+
+.s-line { fill: var(--sensor-line); stroke: var(--sensor-line-edge); stroke-width: 0.08; }
+.s-distance { fill: var(--sensor-distance); }
+.s-red { fill: var(--sensor-red); }
+.s-green { fill: var(--sensor-green); }
+.s-eye { fill: var(--sensor-eye); }
+
+.slot-list {
+  flex: 1;
+  margin: 0;
+  padding: 4px 14px;
+  overflow: auto;
+  list-style: none;
+}
+
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  border-bottom: 1px solid var(--border);
+}
+
+.slot-row:last-child { border-bottom: 0; }
+
+.slot-row-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.slot-row-name code { color: var(--muted); font-size: 12px; }
+
+.slot-row-sensor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.slot-row-sensor .sensor-icon { flex: none; width: 22px; height: 22px; }
+.slot-row[data-sensor=''] .slot-row-sensor { color: var(--muted); font-weight: 400; }
+.slot-row[data-sensor=''] .sensor-icon { display: none; }
+.slot-row[data-sensor=''] .slot-remove { visibility: hidden; }
+
+.slot-remove {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--muted);
+}
+
+.slot-remove:hover { background: var(--border); color: var(--ink); }
+
+.to-program {
+  margin: 14px;
+  padding: 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.to-program:hover { filter: brightness(1.06); }
+
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 6px var(--shadow));
+}
+
+.drag-ghost .sensor-icon { width: 100%; height: 100%; }
 
 /* ---- window too small ---- */
 

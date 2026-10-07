@@ -1,6 +1,7 @@
 import './styles.css';
 import { getLang, onLangChange, setLang, t } from './i18n';
 import type { SavedState } from './storage';
+import { renderAssembly } from './ui/assembly';
 import { renderHeader } from './ui/header';
 import { getState, subscribe } from './ui/state';
 import { applyTheme } from './ui/theme';
@@ -42,3 +43,4 @@ subscribe(applyState);
 applyState(getState());
 showLanguage();
 renderHeader(app.querySelector('.topbar')!);
+renderAssembly(screens.assembly);
