@@ -1,0 +1,153 @@
+// Runs the student's Python on Skulpt in lock-step with the simulation: each advance() lets the
+// program run until its next robot command (or for a few milliseconds of pure computation).
+import type { SensorFunction } from '../sim/sensors';
+import { SensorError } from '../sim/sensors';
+import { toProgramError } from './errors';
+import type { ProgramError } from './errors';
+import { configureSkulpt, sk } from './sk';
+
+export interface RobotIO {
+  setMotors(left: number, right: number): void;
+  read(fn: SensorFunction, slot: string): boolean | number | string;
+  print(text: string): void;
+}
+
+export type ProgramState = 'idle' | 'running' | 'finished' | 'error' | 'stopped';
+
+export const YIELD_MS = 4; // Skulpt yieldLimit: pure Python computation pauses after this many ms
+
+const STEP = 'robot.step'; // suspension type of a robot command
+const SENSORS: SensorFunction[] = ['line', 'brightness', 'distance', 'color'];
+
+// Thrown from the suspension handler to abandon a stopped program without running more Python.
+class StopSignal {}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(r => { resolve = r; });
+  return { promise, resolve };
+}
+
+export class Program {
+  private _state: ProgramState = 'idle';
+  private _line: number | null = null;
+  private _error: ProgramError | null = null;
+  private waitLeft = 0;
+  private gate = deferred();  // opened to let Python continue from its current pause
+  private pause = deferred(); // resolved when Python pauses or the program ends
+  private sensorFailure: { error: SensorError; raised: unknown } | null = null;
+
+  constructor(private readonly source: string, private readonly io: RobotIO) {}
+
+  get state(): ProgramState { return this._state; }
+  get line(): number | null { return this._line; }
+  get error(): ProgramError | null { return this._error; }
+
+  async advance(dt: number): Promise<void> {
+    if (this._state === 'running' && this.waitLeft > 0) {
+      this.waitLeft -= dt;
+      if (this.waitLeft > 1e-9) return;
+    }
+    if (this._state !== 'idle' && this._state !== 'running') return;
+    this.pause = deferred();
+    if (this._state === 'idle') this.start();
+    else this.gate.resolve();
+    await this.pause.promise;
+  }
+
+  // Halts the program where it is paused; no more Python runs after this.
+  stop(): void {
+    if (this._state !== 'idle' && this._state !== 'running') return;
+    this._state = 'stopped';
+    this.gate.resolve();
+  }
+
+  private start(): void {
+    this._state = 'running';
+    configureSkulpt({ output: () => {}, yieldLimit: YIELD_MS }); // print is our own built-in
+    this.installBuiltins();
+    sk().misceval.asyncToPromise(
+      () => sk().importMainWithBody('<stdin>', false, this.source, true),
+      { '*': (susp: any) => this.onSuspension(susp) },
+    ).then(() => this.end('finished', null), (e: unknown) => this.end('error', e));
+  }
+
+  private end(state: 'finished' | 'error', e: unknown): void {
+    if (this._state === 'running') { // a stopped program stays stopped
+      this._state = state;
+      if (state === 'error') {
+        const failure = this.sensorFailure;
+        this._error = toProgramError(e, this.source, failure && failure.raised === e ? failure.error : null);
+      }
+    }
+    this.pause.resolve();
+  }
+
+  private onSuspension(susp: any): Promise<unknown> | null {
+    this._line = stdinLine(susp) ?? this._line;
+    if (this._state === 'stopped') throw new StopSignal();
+    if (susp.data.type !== STEP && susp.data.type !== 'Sk.yield') return null; // e.g. time.sleep: Skulpt waits
+    const gate = this.gate = deferred();
+    this.pause.resolve();
+    return gate.promise.then(() => {
+      if (this._state === 'stopped') throw new StopSignal();
+      return susp.resume();
+    });
+  }
+
+  // A robot command does its effect and ends the step: Python pauses until the next advance().
+  private command(effect: () => void): any {
+    if (this._state !== 'stopped') effect();
+    const susp = new (sk().misceval.Suspension)();
+    susp.data = { type: STEP };
+    susp.resume = () => sk().builtin.none.none$;
+    return susp;
+  }
+
+  private read(fn: SensorFunction, slot: any): any {
+    const Sk = sk();
+    try {
+      return Sk.ffi.remapToPy(this.io.read(fn, new Sk.builtin.str(slot).v));
+    } catch (e) {
+      if (!(e instanceof SensorError)) throw e;
+      const raised = new Sk.builtin.RuntimeError(e.message);
+      this.sensorFailure = { error: e, raised };
+      throw raised;
+    }
+  }
+
+  private installBuiltins(): void {
+    const Sk = sk();
+    const builtin = (name: string, nargs: number, body: (...args: any[]) => any) =>
+      new Sk.builtin.func((...args: any[]) => {
+        Sk.builtin.pyCheckArgsLen(name, args.length, nargs, nargs);
+        return body(...args);
+      });
+    Sk.builtins.motors = builtin('motors', 2, (l, r) =>
+      this.command(() => this.io.setMotors(toNumber('motors', l), toNumber('motors', r))));
+    Sk.builtins.stop = builtin('stop', 0, () => this.command(() => this.io.setMotors(0, 0)));
+    Sk.builtins.wait = builtin('wait', 1, s => this.command(() => {
+      const seconds = toNumber('wait', s);
+      if (seconds < 0) throw new Sk.builtin.ValueError('wait() time must not be negative');
+      this.waitLeft = seconds;
+    }));
+    Sk.builtins.print = new Sk.builtin.func((...args: any[]) =>
+      this.command(() => this.io.print(args.map(a => new Sk.builtin.str(a).v).join(' '))));
+    for (const fn of SENSORS) Sk.builtins[fn] = builtin(fn, 1, slot => this.read(fn, slot));
+  }
+}
+
+function toNumber(fn: string, x: any): number {
+  const Sk = sk();
+  if (!Sk.builtin.checkNumber(x)) throw new Sk.builtin.TypeError(`${fn}() needs a number, not '${Sk.abstr.typeName(x)}'`);
+  const value = Number(Sk.ffi.remapToJs(x));
+  if (!Number.isFinite(value)) throw new Sk.builtin.ValueError(`${fn}() needs a finite number, not ${value}`);
+  return value;
+}
+
+// The line of the student's code where Python paused: the deepest frame from '<stdin>'.
+function stdinLine(susp: any): number | null {
+  let line = null;
+  for (let s = susp; s; s = s.child) if (s.$filename?.includes('<stdin>')) line = s.$lineno;
+  return line;
+}

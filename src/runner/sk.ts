@@ -8,7 +8,8 @@ export function configureSkulpt(opts: { output: (s: string) => void; yieldLimit?
   sk().configure({
     __future__: sk().python3,
     output: opts.output,
-    yieldLimit: opts.yieldLimit,
+    // Sk.configure checks `"yieldLimit" in opts`, so an omitted limit must not be passed as undefined.
+    ...(opts.yieldLimit !== undefined && { yieldLimit: opts.yieldLimit }),
     read: (path: string) => {
       const files = sk().builtinFiles.files;
       if (files[path] !== undefined) return files[path];
