@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import * as Blockly from 'blockly/core';
 import { beforeAll, expect, test } from 'vitest';
 import { readSolution } from '../../tests/solutions/reference';
+import { Program } from '../runner/program';
+import { fakeIO, run } from '../test/fakeIO';
 import { scanComments } from './comments';
 import { registerBlocks } from './definitions';
 import { pythonToBlocks } from './fromPython';
@@ -216,9 +218,31 @@ test('every fixture survives blocks → Python → blocks', () => {
   }
 });
 
-test('global statements give no block anywhere', () => {
-  expect(roundTrip(HEADER + 'def show():\n    global speed\n    print(speed)\n\nglobal x\nx = 1\n'))
-    .toBe(HEADER + 'def show():\n    print(speed)\n\nx = 1\n');
+// Ruling R16: the generator declares only the names that the function's blocks assign; any other name of a
+// `global` stays Python code where it was. Outside a function `global` does nothing and gives no block.
+test('global names the generator does not declare stay Python code', () => {
+  for (const src of ['def roll():\n    global n\n    n = random.randint(1, 6)\n', 'def double():\n    global x\n    x *= 2\n',
+    'def f():\n    stop()\n    global n\n    n = int("5")\n', 'def show():\n    global speed\n    print(speed)\n',
+    'def f(a):\n    global a\n    a = 1\n']) {
+    expect(types(HEADER + src), src).toContain('python_code');
+    expect(roundTrip(HEADER + src), src).toBe(HEADER + src);
+  }
+  const mixed = HEADER + 'def f():\n    global speed, n\n    speed = 5\n    n = random.randint(1, 6)\n\nf()\n';
+  const once = HEADER + 'def f():\n    global speed\n    global n\n    speed = 5\n    n = random.randint(1, 6)\n\nf()\n';
+  expect(roundTrip(mixed)).toBe(once);
+  expect(roundTrip(once)).toBe(once);
+  const nested = HEADER + 'def go():\n    global speed, i\n    if a:\n        speed = 5\n    for i in range(3):\n        pass\n';
+  expect(types(nested)).not.toContain('python_code');
+  expect(roundTrip(nested)).toBe(HEADER + 'def go():\n    global i, speed\n    if a:\n        speed = 5\n    for i in range(3):\n        pass\n');
+  expect(mainStack(HEADER + 'def f():\n    stop()\n\nglobal x\nx = 1\n').map(block => block.type)).toEqual(['variables_set']);
+});
+
+test('a kept global still changes the main program variable when run', async () => {
+  const python = roundTrip('from robot import *\nimport random\n\ndef roll():\n    global n\n    n = random.randint(6, 6)\n\n'
+    + 'n = 0\nroll()\nprint(n)\n');
+  const io = fakeIO();
+  await run(new Program(python, io), 1);
+  expect(io.printed).toEqual(['6']);
 });
 
 test('function blocks: parameters, RETURN input, line map', () => {

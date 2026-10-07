@@ -7,6 +7,7 @@ import { configureSkulpt, sk } from '../runner/sk';
 import { scanComments, type Comment } from './comments';
 import { COLOR_NAMES } from './definitions';
 import { isValidName } from './names';
+import { ASSIGNING } from './toPython';
 
 export type FromPythonResult =
   | { ok: true; blocks: object; lineToBlock: Map<number, string> }
@@ -97,6 +98,7 @@ class Converter {
   private readonly procedures = new Map<string, Node>(); // the `def`s that become function blocks
   private finalReturn: Node = null; // the `return v` that ends the function being converted
   private returned?: Block; // its value, for the RETURN input
+  private declared: Set<string> | null = null; // the names the generator declares `global` in that function
 
   constructor(source: string) {
     this.lines = source.split('\n');
@@ -143,17 +145,37 @@ class Converter {
   // A function that returns a value somewhere is a procedures_defreturn. If it ends with `return v`,
   // v goes into the RETURN input (see spec()); any other return is a return block.
   private procedure(node: Node, span: Span): Block {
+    const params = paramNames(node);
+    this.declared = new Set([...this.assignedByBlocks(node.body)].filter(name => !params.includes(name)));
     const last = node.body[node.body.length - 1];
     this.finalReturn = kind(last) === 'Return' && last.value ? last : null;
     this.returned = undefined;
     const block = this.build({
       type: returnsValue(node.body) ? 'procedures_defreturn' : 'procedures_defnoreturn',
       fields: { NAME: node.name.v },
-      extraState: { params: paramNames(node).map(name => ({ name, id: 'v:' + name })) },
+      extraState: { params: params.map(name => ({ name, id: 'v:' + name })) },
       bodies: [{ input: 'STACK', nodes: node.body, end: span.end, inLoop: false }],
     }, span);
     if (this.returned) (block.inputs ??= {}).RETURN = { block: this.returned };
+    this.declared = null;
     return block;
+  }
+
+  // The names assigned by the blocks these statements become, nested bodies included (for the generator's
+  // `global` line). Their blocks are made only to be looked at, then dropped.
+  private assignedByBlocks(nodes: Node[], names = new Set<string>()): Set<string> {
+    for (const node of nodes) {
+      const count = this.count;
+      try {
+        const spec = this.spec(node, { start: node.lineno, end: node.lineno, col: node.col_offset });
+        if (spec && ASSIGNING.includes(spec.type)) names.add((spec.fields as any).VAR.name);
+        for (const body of spec?.bodies ?? []) this.assignedByBlocks(body.nodes, names);
+      } catch (e) {
+        if (!(e instanceof Unsupported)) throw e;
+      }
+      this.count = count;
+    }
+    return names;
   }
 
   // One statement into `out`: its block, or a Python-code block with its text when a part of it is unsupported.
@@ -201,8 +223,13 @@ class Converter {
   private spec(node: Node, span: Span): Spec | null {
     switch (kind(node)) {
       case 'Pass':
-      case 'Global': // the generator writes a function's `global` line itself
         return null;
+      case 'Global': { // in a function, the names that the generator doesn't declare stay Python code
+        const declared = this.declared;
+        if (!declared) return null; // `global` outside a function does nothing
+        const kept = node.names.map((name: Node) => name.v).filter((name: string) => !declared.has(name));
+        return kept.length ? { type: 'python_code', fields: { CODE: 'global ' + kept.join(', ') } } : null;
+      }
       case 'ImportFrom':
         return node.module?.v === 'robot' && !node.level && node.names.length === 1 && node.names[0].name.v === '*'
           ? null : unsupported();
