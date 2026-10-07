@@ -82,6 +82,8 @@ No random noise anywhere: the same program always produces the same run.
 - **Line sensor** looks straight down at the floor under its slot.
   - `brightness(slot)` → 0–100, derived from the mat image under the slot,
     calibrated so black line ≈ 10, white mat ≈ 95, red ≈ 55, green ≈ 60.
+    Coloured zones are painted over the line (the line is not visible
+    inside them).
     Anti-aliased edges of the line give in-between values.
   - `line(slot)` → `brightness(slot) < 50`. Red and green are therefore
     "not line", so a simple two-sensor follower drives straight across them.
@@ -135,6 +137,13 @@ student deletes the import.
 - Comments: a whole-line comment becomes a small note block at that place. A
   comment at the end of a code line becomes a note block just before that
   statement (no comment text is ever dropped).
+
+### Names
+Variable, function and parameter names may use only Latin letters, digits
+and `_` (Skulpt 1.2.0 rejects other letters). Block dialogs refuse other
+names with a translated hint («Имя может содержать только латинские буквы,
+цифры и _»); a Cyrillic name typed in Python shows the same hint as its
+syntax error.
 
 ### Program structure
 - The main program is the stack under the single, undeletable
@@ -192,9 +201,10 @@ errors); other errors show Python's original English text.
 - At each pause, the block and Python line that caused it are highlighted.
 
 ### Mat and tracks
-Mat: 200 × 120 cm, white, 2 cm black line, scaled to fit its pane. The mat
-is drawn once into an image; sensors read that same image. The mat stays
-light in both themes.
+Mat: 200 × 120 cm, white, 2 cm black line, scaled to fit its pane. Sensors
+read the track geometry directly (not pixels), and the mat is drawn from the
+same geometry, so what the student sees is what the sensors read — and the
+result can't vary between graphics cards. The mat stays light in both themes.
 
 1. **«Первые шаги»**: gentle curves, start box → green finish zone.
 2. **«Шлагбаум»**: sharper curves and a barrier across the line. The barrier
@@ -248,8 +258,8 @@ Leaving the line is not a failure. There is no time limit.
 
 Each part has one job and can be tested on its own:
 - **robot** — slots, sensor readings, kinematics (pure, no DOM).
-- **tracks** — track data (line shape, zones, barrier, start pose) and drawing
-  the mat image.
+- **tracks** — track data (line shape, zones, barrier, start pose) and the
+  surface (brightness/colour) at any point.
 - **sim** — world step and rules (pure, no DOM).
 - **runner** — Skulpt wrapper: `robot` module, step pausing, Stop, current
   line tracking, error translation.
