@@ -11,7 +11,7 @@ export const ROBOT_COLOUR = '#d9822b';
 export const SENSOR_COLOUR = '#2a9db0';
 export const OTHER_COLOUR = '#7d7d7d';
 
-const COLOR_NAMES: ColorName[] = ['red', 'green', 'black', 'white'];
+export const COLOR_NAMES: ColorName[] = ['red', 'green', 'black', 'white'];
 const OPERATORS = ['+', '-', '*', '/', '//', '%', '**'];
 
 type Json = Record<string, unknown>;
