@@ -1,6 +1,19 @@
 import { expect, test, vi } from 'vitest';
 import { fakeIO, run } from '../test/fakeIO';
-import { Program, YIELD_MS } from './program';
+import { Program } from './program';
+
+const DT = 1 / 60;
+
+// Runs fn with a fake clock that only the IO's slow sensor read moves, by 10 ms per read.
+// Skulpt checks that clock to interrupt Python, so interruptions happen at exact places.
+async function withSlowReads(fn: (io: ReturnType<typeof fakeIO>) => Promise<void>): Promise<void> {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    await fn({ ...fakeIO(), read: () => { vi.advanceTimersByTime(10); return false; } });
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 test('one loop iteration per step', async () => {
   const io = fakeIO(); const p = new Program('while True:\n    motors(10, 20)\n', io);
@@ -21,7 +34,12 @@ test('sensor reads do not pause', async () => {
 
 test('stop interrupts an empty infinite loop', async () => {
   const p = new Program('while True:\n    pass\n', fakeIO());
-  await run(p, 2); p.stop(); await run(p, 1); expect(p.state).toBe('stopped');
+  const durations: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const t = Date.now(); expect(await p.advance(DT)).toBe(false); durations.push(Date.now() - t);
+  }
+  expect(durations.sort((a, b) => a - b)[2]).toBeLessThan(50); // the median, so a stall on a busy machine is fine
+  p.stop(); expect(await p.advance(DT)).toBe(true); expect(p.state).toBe('stopped');
 });
 
 test('a stopped program runs no more Python, so it cannot affect the next one', async () => {
@@ -36,42 +54,31 @@ test('a stopped program runs no more Python, so it cannot affect the next one', 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 test('a program stopped inside time.sleep is released and cannot affect the next one', async () => {
-  const io1 = fakeIO(); const p1 = new Program('import time\ntime.sleep(0.1)\nmotors(9, 9)\n', io1);
-  const firstStep = p1.advance(1 / 60);
+  const io1 = fakeIO(); const p1 = new Program('import time\nstop()\ntime.sleep(0.1)\nmotors(9, 9)\n', io1);
+  await run(p1, 1);
+  const sleeping = p1.advance(DT);
   await sleep(20); p1.stop();
-  const stoppedAt = Date.now(); await firstStep; expect(Date.now() - stoppedAt).toBeLessThan(40);
+  const first = await Promise.race([sleeping.then(() => 'released'), sleep(60).then(() => 'still asleep')]);
+  expect(first).toBe('released');
   const io2 = fakeIO(); const p2 = new Program('while True:\n    motors(2, 2)\n', io2);
   await run(p2, 1); await sleep(150); // past the end of the sleep
-  expect(io1.motorCalls).toEqual([]); expect(io2.motorCalls).toEqual([[2, 2]]);
+  expect(io1.motorCalls).toEqual([[0, 0]]); expect(io2.motorCalls).toEqual([[2, 2]]);
 });
 
-test('a slow start still gives the first command in the first step', async () => {
-  const slowRead = () => { const end = Date.now() + 2 * YIELD_MS; while (Date.now() < end); return false; };
-  const io = { ...fakeIO(), read: slowRead };
-  const p = new Program('for i in range(3):\n    line("front_left")\nmotors(1, 1)\n', io);
-  await run(p, 1); expect(io.motorCalls).toEqual([[1, 1]]);
-});
+test('an advance interrupted by the time slice returns false; the next one completes the step', () => withSlowReads(async io => {
+  // Skulpt checks the clock on entering go(), right after the slow read.
+  const p = new Program('def go():\n    motors(1, 1)\n\nwhile True:\n    line("front_left")\n    go()\n', io);
+  const results: boolean[] = [];
+  for (let i = 0; i < 6; i++) results.push(await p.advance(DT));
+  expect(results).toEqual([false, true, false, true, false, true]); expect(io.motorCalls.length).toBe(3);
+}));
 
-test('a slow step still gives one command per step', async () => {
-  // A fake clock that only the slow read moves (10 ms each); Skulpt checks it on entering go().
-  vi.useFakeTimers({ toFake: ['Date'] });
-  try {
-    const io = { ...fakeIO(), read: () => { vi.advanceTimersByTime(10); return false; } };
-    const p = new Program('def go():\n    motors(1, 1)\n\nwhile True:\n    line("front_left")\n    go()\n', io);
-    await run(p, 10); expect(io.motorCalls.length).toBe(10);
-  } finally {
-    vi.useRealTimers();
-  }
-});
-
-test('an endless loop without commands still ends every step and can be stopped', async () => {
-  const p = new Program('motors(1, 1)\nwhile True:\n    pass\n', fakeIO());
-  await run(p, 1);
-  for (let i = 0; i < 3; i++) {
-    const t = Date.now(); await run(p, 1); expect(Date.now() - t).toBeLessThan(150);
-  }
-  p.stop(); await run(p, 1); expect(p.state).toBe('stopped');
-});
+test('interrupted advances use up no simulated time, not even from a wait', () => withSlowReads(async io => {
+  // The step right after the wait is interrupted once; motors(2, 2) still comes 0.5 s after the wait.
+  const p = new Program('def go():\n    motors(2, 2)\n\nmotors(1, 1)\nwait(0.5)\nline("front_left")\ngo()\n', io);
+  await run(p, 31); expect(io.motorCalls.at(-1)).toEqual([1, 1]);
+  await run(p, 1); expect(io.motorCalls.at(-1)).toEqual([2, 2]);
+}));
 
 test('runtime errors carry kind, line and name', async () => {
   const p = new Program('x = 1\nmotor(1, 2)\n', fakeIO()); await run(p, 1);

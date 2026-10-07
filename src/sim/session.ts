@@ -1,4 +1,5 @@
-// One run: the student's program and the world, advanced together step by step. No DOM.
+// One run: the student's program and the world, advanced together step by step. World time
+// passes only on steps the program completes, so a run is the same on every machine. No DOM.
 import type { Assembly } from '../robot/robot';
 import { Program } from '../runner/program';
 import type { Track } from '../tracks/tracks';
@@ -30,9 +31,12 @@ export class Session {
 
   get outcome(): RunOutcome { return this._outcome; }
 
+  // A step whose Python was only interrupted by Skulpt's time slice is not complete: the world
+  // stays as it is, and the next call continues the same step.
   async step(): Promise<void> {
     if (this._outcome !== 'running') return;
-    await this.program.advance(DT);
+    const completed = await this.program.advance(DT);
+    if (!completed) return;
     if (this._outcome !== 'running') return; // stopped while the program was paused, e.g. in time.sleep
     if (this.program.state === 'finished') return this.end('programEnded');
     if (this.program.state === 'error') return this.end('programError');

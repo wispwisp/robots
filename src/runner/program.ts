@@ -1,5 +1,6 @@
-// Runs the student's Python on Skulpt in lock-step with the simulation: each advance() lets the
-// program run until its next robot command (or for STEP_BUDGET_MS of pure computation).
+// Runs the student's Python on Skulpt in lock-step with the simulation: a simulation step lets the
+// program run until its next robot command. Pure computation is cut into YIELD_MS slices so the
+// page stays responsive; a slice ends an advance() without completing the step.
 import type { SensorFunction } from '../sim/sensors';
 import { SensorError } from '../sim/sensors';
 import { toProgramError } from './errors';
@@ -14,13 +15,7 @@ export interface RobotIO {
 
 export type ProgramState = 'idle' | 'running' | 'finished' | 'error' | 'stopped';
 
-export const YIELD_MS = 4; // Skulpt yieldLimit: how often pure Python computation checks in with us
-// Wall-clock time a step may take before a check-in ends it without a command. Generous, so
-// that ordinary slowness (GC, a busy machine) does not end a step early and change the run.
-export const STEP_BUDGET_MS = 50;
-// Until its first command the budget is counted from the start instead, so that imports and
-// setup code do not start the run one step late.
-const START_BUDGET_MS = 250;
+export const YIELD_MS = 4; // Skulpt yieldLimit: pure Python computation is interrupted after this many ms
 
 const STEP = 'robot.step'; // suspension type of a robot command
 const SENSORS: SensorFunction[] = ['line', 'brightness', 'distance', 'color'];
@@ -28,9 +23,9 @@ const SENSORS: SensorFunction[] = ['line', 'brightness', 'distance', 'color'];
 // Thrown from the suspension handler to abandon a stopped program without running more Python.
 class StopSignal {}
 
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>(r => { resolve = r; });
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(r => { resolve = r; });
   return { promise, resolve };
 }
 
@@ -39,11 +34,8 @@ export class Program {
   private _line: number | null = null;
   private _error: ProgramError | null = null;
   private waitLeft = 0;
-  private startedAt = 0;
-  private stepStartedAt = 0;
-  private commanded = false;  // has the program given its first command yet?
-  private gate = deferred();  // opened to let Python continue from its current pause
-  private pause = deferred(); // resolved when Python pauses or the program ends
+  private gate = deferred();           // opened to let Python continue from its current pause
+  private pause = deferred<boolean>(); // resolved when Python pauses or the program ends: is the step complete?
   private sensorFailure: { error: SensorError; raised: unknown } | null = null;
 
   constructor(private readonly source: string, private readonly io: RobotIO) {}
@@ -52,17 +44,20 @@ export class Program {
   get line(): number | null { return this._line; }
   get error(): ProgramError | null { return this._error; }
 
-  async advance(dt: number): Promise<void> {
+  // Runs the program for a simulation step of dt seconds. Returns true when the step is complete: a
+  // command was given, a wait() used up dt, or the program has ended. Returns false when Python was
+  // only interrupted after YIELD_MS: no simulated time has passed, and the next call continues the step.
+  async advance(dt: number): Promise<boolean> {
     if (this._state === 'running' && this.waitLeft > 0) {
       this.waitLeft -= dt;
-      if (this.waitLeft > 1e-9) return;
+      if (this.waitLeft > 1e-9) return true;
+      this.waitLeft = 0;
     }
-    if (this._state !== 'idle' && this._state !== 'running') return;
-    this.pause = deferred();
-    this.stepStartedAt = Date.now();
+    if (this._state !== 'idle' && this._state !== 'running') return true;
+    this.pause = deferred<boolean>();
     if (this._state === 'idle') this.start();
     else this.gate.resolve();
-    await this.pause.promise;
+    return this.pause.promise;
   }
 
   // Halts the program where it is paused; no more Python runs after this.
@@ -70,12 +65,11 @@ export class Program {
     if (this._state !== 'idle' && this._state !== 'running') return;
     this._state = 'stopped';
     this.gate.resolve();
-    this.pause.resolve(); // releases an advance() waiting on a real-time pause such as time.sleep
+    this.pause.resolve(true); // releases an advance() waiting on a real-time pause such as time.sleep
   }
 
   private start(): void {
     this._state = 'running';
-    this.startedAt = Date.now();
     configureSkulpt({ output: () => {}, yieldLimit: YIELD_MS }); // print is our own built-in
     this.installBuiltins();
     sk().misceval.asyncToPromise(
@@ -92,7 +86,7 @@ export class Program {
         this._error = toProgramError(e, this.source, failure && failure.raised === e ? failure.error : null);
       }
     }
-    this.pause.resolve();
+    this.pause.resolve(true);
   }
 
   private onSuspension(susp: any): Promise<unknown> | null {
@@ -106,16 +100,10 @@ export class Program {
       );
       return this.resumeAfter(settled, susp);
     }
-    if (type === 'Sk.yield' && !this.overBudget()) return this.resumeAfter(Promise.resolve(), susp);
     if (type !== STEP && type !== 'Sk.yield') return null;
     this.gate = deferred();
-    this.pause.resolve();
+    this.pause.resolve(type === STEP); // after a yield the step is not complete yet
     return this.resumeAfter(this.gate.promise, susp);
-  }
-
-  private overBudget(): boolean {
-    if (!this.commanded) return Date.now() - this.startedAt > START_BUDGET_MS;
-    return Date.now() - this.stepStartedAt > STEP_BUDGET_MS;
   }
 
   // Continues Python once `ready` settles, unless the program has been stopped meanwhile.
@@ -128,7 +116,6 @@ export class Program {
 
   // A robot command does its effect and ends the step: Python pauses until the next advance().
   private command(effect: () => void): any {
-    this.commanded = true;
     if (this._state !== 'stopped') effect();
     const susp = new (sk().misceval.Suspension)();
     susp.data = { type: STEP };

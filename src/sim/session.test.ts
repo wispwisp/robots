@@ -38,7 +38,8 @@ test('a program error ends the run and stops motors', async () => {
 
 test('stop during time.sleep freezes the world', async () => {
   const s = new Session(getTrack('first_steps'), {}, 'import time\nmotors(50, 50)\ntime.sleep(10)\n');
-  await s.step(); const time = s.world.time; const pose = { ...s.world.pose };
+  for (let i = 0; i < 100 && s.world.time === 0; i++) await s.step(); // the step with motors(50, 50)
+  const time = s.world.time; const pose = { ...s.world.pose };
   const pending = s.step(); await new Promise(r => setTimeout(r, 20)); s.stop(); await pending; await s.step();
   expect(s.outcome).toBe('stopped'); expect(s.program.state).toBe('stopped');
   expect(s.world.time).toBe(time); expect(s.world.pose).toEqual(pose);
