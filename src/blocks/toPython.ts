@@ -46,7 +46,8 @@ function dedent(text: string): string {
 const sensor = (fn: string): Generator => (block) => [`${fn}("${block.getFieldValue('SLOT')}")`, Order.FUNCTION_CALL];
 
 // Variables a function assigns; they are declared `global` so that they are the program's variables.
-export const ASSIGNING = ['variables_set', 'var_change', 'py_for_range', 'controls_forEach'];
+// Loop variables are not (Ruling R17): a loop in a function must not change the main program's loop counter.
+export const ASSIGNING = ['variables_set', 'var_change'];
 
 function procedureDef(block: Blockly.Block, g: PythonGenerator): string {
   const params = block.getVarModels().map(v => v.getName());

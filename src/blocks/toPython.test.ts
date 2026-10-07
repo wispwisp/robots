@@ -148,12 +148,14 @@ test('functions: def, return, calls, params are not global', () => {
   expect([g.lineToBlock.get(6), g.lineToBlock.get(10)]).toEqual(['twiceId', 'twiceId']); // def line, final return
 });
 
-test('global lists assigned and loop variables, sorted', () => {
+// Ruling R17: loop variables are not global, so a loop in a function doesn't change the main program's counter.
+test('global lists assigned variables, sorted; loop variables are not global', () => {
   const f = b('procedures_defnoreturn', { NAME: 'f' }, { STACK: [
     set('b', num(1)), range(0, 3, 1), b('controls_forEach', varField('item'), { LIST: get('xs') }),
     b('var_change', { ...varField('a'), OP: '-=' }, { DELTA: num(1) }), b('text_print', {}, { TEXT: get('zz') }),
   ] });
-  expect(gen(program([], f)).code).toContain('def f():\n    global a, b, i, item\n');
+  expect(gen(program([], f)).code).toBe('from robot import *\n\ndef f():\n    global a, b\n    b = 1\n'
+    + '    for i in range(3):\n        pass\n    for item in xs:\n        pass\n    a -= 1\n    print(zz)\n');
 });
 
 test('empty and comment-only bodies get pass; empty function', () => {

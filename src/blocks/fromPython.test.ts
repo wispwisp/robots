@@ -231,10 +231,24 @@ test('global names the generator does not declare stay Python code', () => {
   const once = HEADER + 'def f():\n    global speed\n    global n\n    speed = 5\n    n = random.randint(1, 6)\n\nf()\n';
   expect(roundTrip(mixed)).toBe(once);
   expect(roundTrip(once)).toBe(once);
+  // `speed` is assigned by a block inside the `if`; a loop variable is never declared by the generator (R17).
   const nested = HEADER + 'def go():\n    global speed, i\n    if a:\n        speed = 5\n    for i in range(3):\n        pass\n';
-  expect(types(nested)).not.toContain('python_code');
-  expect(roundTrip(nested)).toBe(HEADER + 'def go():\n    global i, speed\n    if a:\n        speed = 5\n    for i in range(3):\n        pass\n');
+  const nestedOnce = HEADER + 'def go():\n    global speed\n    global i\n    if a:\n        speed = 5\n'
+    + '    for i in range(3):\n        pass\n';
+  expect(roundTrip(nested)).toBe(nestedOnce);
+  expect(roundTrip(nestedOnce)).toBe(nestedOnce);
   expect(mainStack(HEADER + 'def f():\n    stop()\n\nglobal x\nx = 1\n').map(block => block.type)).toEqual(['variables_set']);
+});
+
+// Ruling R17: a loop in a function has its own loop variable, so the main program's loop keeps counting.
+test('a loop variable in a function is not global: the main loop still counts 0, 1, 2', async () => {
+  const blink = HEADER + 'def blink(k):\n    for i in range(k):\n        stop()\n\nfor i in range(3):\n    blink(2)\n    print(i)\n';
+  const python = roundTrip(blink);
+  expect(python).toBe(blink);
+  expect(roundTrip(python)).toBe(python);
+  const io = fakeIO();
+  await run(new Program(python, io), 20); // 9 commands, then the finished program completes every step
+  expect(io.printed).toEqual(['0', '1', '2']);
 });
 
 test('a kept global still changes the main program variable when run', async () => {
