@@ -1,6 +1,7 @@
 // Runs the student's Python on Skulpt in lock-step with the simulation: a simulation step lets the
-// program run until its next robot command. Pure computation is cut into YIELD_MS slices so the
-// page stays responsive; a slice ends an advance() without completing the step.
+// program run until its next robot command, or until it has read the sensors SENSOR_READS_PER_STEP
+// times without one. Pure computation is cut into YIELD_MS slices so the page stays responsive; a
+// slice ends an advance() without completing the step.
 import type { SensorFunction } from '../sim/sensors';
 import { SensorError } from '../sim/sensors';
 import { toProgramError } from './errors';
@@ -16,8 +17,12 @@ export interface RobotIO {
 export type ProgramState = 'idle' | 'running' | 'finished' | 'error' | 'stopped';
 
 export const YIELD_MS = 4; // Skulpt yieldLimit: pure Python computation is interrupted after this many ms
+// A step ends after this many sensor reads without a command, so that a loop which only polls a
+// sensor (`while distance("front_center") > 20: pass`) sees the world move. Counted, not timed,
+// so every machine gives the same run.
+export const SENSOR_READS_PER_STEP = 100;
 
-const STEP = 'robot.step'; // suspension type of a robot command
+const STEP = 'robot.step'; // suspension type that ends a step (a command, or the read limit)
 const SENSORS: SensorFunction[] = ['line', 'brightness', 'distance', 'color'];
 
 // Thrown from the suspension handler to abandon a stopped program without running more Python.
@@ -34,6 +39,7 @@ export class Program {
   private _line: number | null = null;
   private _error: ProgramError | null = null;
   private waitLeft = 0;
+  private reads = 0;                   // sensor reads in the current step
   private gate = deferred();           // opened to let Python continue from its current pause
   private pause = deferred<boolean>(); // resolved when Python pauses or the program ends: is the step complete?
   private sensorFailure: { error: SensorError; raised: unknown } | null = null;
@@ -45,8 +51,9 @@ export class Program {
   get error(): ProgramError | null { return this._error; }
 
   // Runs the program for a simulation step of dt seconds. Returns true when the step is complete: a
-  // command was given, a wait() used up dt, or the program has ended. Returns false when Python was
-  // only interrupted after YIELD_MS: no simulated time has passed, and the next call continues the step.
+  // command was given, the read limit was reached, a wait() used up dt, or the program has ended.
+  // Returns false when Python was only interrupted after YIELD_MS: no simulated time has passed,
+  // and the next call continues the step.
   async advance(dt: number): Promise<boolean> {
     if (this._state === 'running' && this.waitLeft > 0) {
       this.waitLeft -= dt;
@@ -114,16 +121,25 @@ export class Program {
     });
   }
 
-  // A robot command does its effect and ends the step: Python pauses until the next advance().
+  // A robot command does its effect and ends the step.
   private command(effect: () => void): any {
     if (this._state !== 'stopped') effect();
+    return this.endStep(() => sk().builtin.none.none$);
+  }
+
+  // Ends the step: Python pauses here until the next advance(), then continues with resume().
+  private endStep(resume: () => any): any {
+    this.reads = 0;
     const susp = new (sk().misceval.Suspension)();
     susp.data = { type: STEP };
-    susp.resume = () => sk().builtin.none.none$;
+    susp.resume = resume;
     return susp;
   }
 
   private read(fn: SensorFunction, slot: any): any {
+    // Over the limit: end the step first, and read in the next one, which sees the world moved on.
+    if (this.reads >= SENSOR_READS_PER_STEP) return this.endStep(() => this.read(fn, slot));
+    this.reads++;
     const Sk = sk();
     try {
       return Sk.ffi.remapToPy(this.io.read(fn, new Sk.builtin.str(slot).v));

@@ -80,6 +80,20 @@ test('interrupted advances use up no simulated time, not even from a wait', () =
   await run(p, 1); expect(io.motorCalls.at(-1)).toEqual([2, 2]);
 }));
 
+test('100 reads and a command per iteration still make one step per iteration', async () => {
+  const io = fakeIO();
+  const p = new Program('while True:\n    for i in range(100):\n        line("front_left")\n    motors(1, 1)\n', io);
+  await run(p, 5); expect(io.motorCalls.length).toBe(5);
+});
+
+test('the 101st read without a command ends the step first, then reads the new step', async () => {
+  let completed = 0; // stands in for the world: what a read sees changes only between steps
+  const io = { ...fakeIO(), read: () => completed };
+  const p = new Program('v = []\nfor i in range(101):\n    v.append(brightness("front_left"))\nprint(v[0], v[99], v[100])\n', io);
+  for (let i = 0; i < 1000 && io.printed.length === 0; i++) if (await p.advance(DT)) completed++;
+  expect(io.printed).toEqual(['0 0 1']);
+});
+
 test('runtime errors carry kind, line and name', async () => {
   const p = new Program('x = 1\nmotor(1, 2)\n', fakeIO()); await run(p, 1);
   expect(p.state).toBe('error'); expect(p.error).toMatchObject({ kind: 'NameError', line: 2, name: 'motor' });

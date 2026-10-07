@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { readSolution, REFERENCE_ASSEMBLY } from '../../tests/solutions/reference';
 import { getTrack } from '../tracks/tracks';
+import { readSensor } from './sensors';
 import { Session } from './session';
 import { DT } from './world';
 
@@ -43,6 +44,16 @@ test('stop during time.sleep freezes the world', async () => {
   const pending = s.step(); await new Promise(r => setTimeout(r, 20)); s.stop(); await pending; await s.step();
   expect(s.outcome).toBe('stopped'); expect(s.program.state).toBe('stopped');
   expect(s.world.time).toBe(time); expect(s.world.pose).toEqual(pose);
+});
+
+test('a loop that only polls a sensor still sees the world move', async () => {
+  const source = 'motors(50, 50)\nwhile distance("front_center") > 20:\n    pass\nstop()\nwait(10)\n';
+  const s = new Session(getTrack('barrier'), REFERENCE_ASSEMBLY, source);
+  s.world.pose = { x: 60, y: 100, heading: 0 }; // driving straight at the closed barrier (x = 135)
+  for (let i = 0; i < 2000 && s.world.time < 5; i++) await s.step();
+  expect(s.world.time).toBeGreaterThanOrEqual(5);
+  expect(s.outcome).toBe('running'); expect(s.world.motors).toEqual({ left: 0, right: 0 });
+  expect(readSensor(s.world, 'distance', 'front_center')).toBe(20);
 });
 
 test('output keeps last 5 lines', async () => {
