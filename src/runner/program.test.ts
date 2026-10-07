@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { fakeIO, run } from '../test/fakeIO';
 import { Program, YIELD_MS } from './program';
 
@@ -50,6 +50,27 @@ test('a slow start still gives the first command in the first step', async () =>
   const io = { ...fakeIO(), read: slowRead };
   const p = new Program('for i in range(3):\n    line("front_left")\nmotors(1, 1)\n', io);
   await run(p, 1); expect(io.motorCalls).toEqual([[1, 1]]);
+});
+
+test('a slow step still gives one command per step', async () => {
+  // A fake clock that only the slow read moves (10 ms each); Skulpt checks it on entering go().
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    const io = { ...fakeIO(), read: () => { vi.advanceTimersByTime(10); return false; } };
+    const p = new Program('def go():\n    motors(1, 1)\n\nwhile True:\n    line("front_left")\n    go()\n', io);
+    await run(p, 10); expect(io.motorCalls.length).toBe(10);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('an endless loop without commands still ends every step and can be stopped', async () => {
+  const p = new Program('motors(1, 1)\nwhile True:\n    pass\n', fakeIO());
+  await run(p, 1);
+  for (let i = 0; i < 3; i++) {
+    const t = Date.now(); await run(p, 1); expect(Date.now() - t).toBeLessThan(150);
+  }
+  p.stop(); await run(p, 1); expect(p.state).toBe('stopped');
 });
 
 test('runtime errors carry kind, line and name', async () => {

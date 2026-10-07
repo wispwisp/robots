@@ -1,5 +1,5 @@
 // Runs the student's Python on Skulpt in lock-step with the simulation: each advance() lets the
-// program run until its next robot command (or for a few milliseconds of pure computation).
+// program run until its next robot command (or for STEP_BUDGET_MS of pure computation).
 import type { SensorFunction } from '../sim/sensors';
 import { SensorError } from '../sim/sensors';
 import { toProgramError } from './errors';
@@ -14,9 +14,12 @@ export interface RobotIO {
 
 export type ProgramState = 'idle' | 'running' | 'finished' | 'error' | 'stopped';
 
-export const YIELD_MS = 4; // Skulpt yieldLimit: pure Python computation pauses after this many ms
-// Until its first command a program may compute this long without pausing, so that a slow
-// machine (imports, setup code) does not start the run one step late.
+export const YIELD_MS = 4; // Skulpt yieldLimit: how often pure Python computation checks in with us
+// Wall-clock time a step may take before a check-in ends it without a command. Generous, so
+// that ordinary slowness (GC, a busy machine) does not end a step early and change the run.
+export const STEP_BUDGET_MS = 50;
+// Until its first command the budget is counted from the start instead, so that imports and
+// setup code do not start the run one step late.
 const START_BUDGET_MS = 250;
 
 const STEP = 'robot.step'; // suspension type of a robot command
@@ -37,6 +40,7 @@ export class Program {
   private _error: ProgramError | null = null;
   private waitLeft = 0;
   private startedAt = 0;
+  private stepStartedAt = 0;
   private commanded = false;  // has the program given its first command yet?
   private gate = deferred();  // opened to let Python continue from its current pause
   private pause = deferred(); // resolved when Python pauses or the program ends
@@ -55,6 +59,7 @@ export class Program {
     }
     if (this._state !== 'idle' && this._state !== 'running') return;
     this.pause = deferred();
+    this.stepStartedAt = Date.now();
     if (this._state === 'idle') this.start();
     else this.gate.resolve();
     await this.pause.promise;
@@ -101,13 +106,16 @@ export class Program {
       );
       return this.resumeAfter(settled, susp);
     }
-    if (type === 'Sk.yield' && !this.commanded && Date.now() - this.startedAt < START_BUDGET_MS) {
-      return this.resumeAfter(Promise.resolve(), susp);
-    }
+    if (type === 'Sk.yield' && !this.overBudget()) return this.resumeAfter(Promise.resolve(), susp);
     if (type !== STEP && type !== 'Sk.yield') return null;
     this.gate = deferred();
     this.pause.resolve();
     return this.resumeAfter(this.gate.promise, susp);
+  }
+
+  private overBudget(): boolean {
+    if (!this.commanded) return Date.now() - this.startedAt > START_BUDGET_MS;
+    return Date.now() - this.stepStartedAt > STEP_BUDGET_MS;
   }
 
   // Continues Python once `ready` settles, unless the program has been stopped meanwhile.
