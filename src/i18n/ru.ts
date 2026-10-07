@@ -99,15 +99,6 @@ const blocks = {
   ROBOT_BRIGHTNESS: 'яркость · %1',
   ROBOT_DISTANCE: 'расстояние · %1',
   ROBOT_COLOR: 'цвет · %1',
-  SLOT_FRONT_LEFT: ui.slot_front_left,
-  SLOT_FRONT_CENTER: ui.slot_front_center,
-  SLOT_FRONT_RIGHT: ui.slot_front_right,
-  SLOT_LEFT: ui.slot_left,
-  SLOT_RIGHT: ui.slot_right,
-  COLOR_RED: ui.color_red,
-  COLOR_GREEN: ui.color_green,
-  COLOR_BLACK: ui.color_black,
-  COLOR_WHITE: ui.color_white,
 
   CONTROLS_FOREVER: 'повторять всегда',
   CONTROLS_WHILE: 'повторять пока %1',
@@ -115,7 +106,7 @@ const blocks = {
   PY_MATH_ABS: 'модуль',
   PY_MATH_ROUND: 'округлить',
   VAR_CHANGE: '%2 %1 на %3', // %1 variable, %2 operation, %3 amount: «увеличить speed на 2»
-  VAR_CHANGE_ADD: 'увеличить',
+  VAR_CHANGE_ADD: 'увеличить', // the operation's labels; in Python they are += and -=
   VAR_CHANGE_SUB: 'уменьшить',
   PY_RETURN: 'вернуть %1',
   PY_LIST_GET: 'элемент %2 из списка %1',
@@ -124,6 +115,9 @@ const blocks = {
   PY_LEN: 'длина %1',
   PYTHON_CODE: 'Python-код',
   COMMENT_NOTE: 'заметка: %1',
+  // hint under the «Python-код» text editor (@blockly/field-multilineinput)
+  FIELD_MULTILINEINPUT_FINISH_EDITING: 'готово',
+  FIELD_MULTILINEINPUT_NEW_LINE: 'новая строка',
 } as const;
 
 // Blockly's typings (msg/msg.d.ts) lag behind its Blockly 13 message files, so the keys are read untyped;

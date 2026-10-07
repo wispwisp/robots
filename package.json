@@ -18,6 +18,7 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
+    "@blockly/field-multilineinput": "^13.3.0",
     "@blockly/theme-dark": "^13.3.0",
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lint": "^6.9.7",
