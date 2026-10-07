@@ -168,7 +168,12 @@ doesn't change.
   rebuilt. The Python text is not rewritten while the student types.
   Pressing Run during that 0.5 s applies the pending change first.
 - Python with a syntax error → red underline and translated message on that
-  line; blocks keep their last good state; **Run is disabled** until fixed.
+  line; blocks keep their last good state and are locked (with a short hint
+  to fix the Python first) so a stray block change can't overwrite the typed
+  text; **Run is disabled** until fixed. The blocks are also locked during the
+  0.5 s pause after typing.
+- If saved blocks can't be loaded (e.g. saved by an older build), they are
+  rebuilt from the saved Python; the app never shows a broken screen.
 - **What runs is always the Python text.**
 - While a program is running, both editors are read-only.
 - Round-trip guarantee: for every supported program, blocks → Python → blocks
