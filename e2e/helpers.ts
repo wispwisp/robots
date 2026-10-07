@@ -27,6 +27,12 @@ export async function setPython(page: Page, text: string): Promise<void> {
   await page.keyboard.insertText(text);
 }
 
+// The readings timer text «mm:ss.s» (e.g. «00:04.0») in seconds; NaN for null or anything else.
+export function parseTimer(text: string | null): number {
+  const m = /^(\d+):(\d+(?:\.\d+)?)$/.exec((text ?? '').trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+}
+
 // The editor's exact text (its lines; a short program is fully rendered).
 export async function getPython(page: Page): Promise<string> {
   return (await page.locator('[data-testid=python-editor] .cm-line').allTextContents()).join('\n');
