@@ -11,7 +11,7 @@ import { configureSkulpt, sk } from './sk';
 export interface RobotIO {
   setMotors(left: number, right: number): void;
   read(fn: SensorFunction, slot: string): boolean | number | string;
-  print(text: string): void;
+  print(text: string): void; // a print's whole text, `end` included (usually a newline)
 }
 
 export type ProgramState = 'idle' | 'running' | 'finished' | 'error' | 'stopped';
@@ -198,8 +198,19 @@ export class Program {
       if (seconds < 0) throw new Sk.builtin.ValueError('wait() time must not be negative');
       this.waitLeft = seconds;
     }));
-    Sk.builtins.print = new Sk.builtin.func((...args: any[]) =>
-      this.command(() => this.io.print(args.map(a => new Sk.builtin.str(a).v).join(' '))));
+    // print(..., sep=" ", end="\n"): the output gets the whole text, which goes on the current line until a newline.
+    const text = (name: string, value: any, otherwise: string): string => {
+      if (value === Sk.builtin.none.none$) return otherwise;
+      if (value instanceof Sk.builtin.str) return value.v;
+      throw new Sk.builtin.TypeError(`${name} must be None or a string, not ${Sk.abstr.typeName(value)}`);
+    };
+    const print = (args: any[], kwargs?: any[]) => {
+      const none = Sk.builtin.none.none$;
+      const [sep, end] = Sk.abstr.copyKeywordsToNamedArgs('print', ['sep', 'end'], [], kwargs, [none, none]);
+      const [sepText, endText] = [text('sep', sep, ' '), text('end', end, '\n')];
+      return this.command(() => this.io.print(args.map(a => new Sk.builtin.str(a).v).join(sepText) + endText));
+    };
+    Sk.builtins.print = new Sk.builtin.func(Object.assign(print, { co_fastcall: true })); // called with (args, kwargs)
     for (const fn of SENSORS) Sk.builtins[fn] = builtin(fn, 1, slot => this.read(fn, slot));
   }
 }

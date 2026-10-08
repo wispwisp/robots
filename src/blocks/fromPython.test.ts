@@ -248,7 +248,7 @@ test('a loop variable in a function is not global: the main loop still counts 0,
   expect(roundTrip(python)).toBe(python);
   const io = fakeIO();
   await run(new Program(python, io), 20); // 9 commands, then the finished program completes every step
-  expect(io.printed).toEqual(['0', '1', '2']);
+  expect(io.printed).toEqual(['0\n', '1\n', '2\n']);
 });
 
 test('a kept global still changes the main program variable when run', async () => {
@@ -256,7 +256,7 @@ test('a kept global still changes the main program variable when run', async () 
     + 'n = 0\nroll()\nprint(n)\n');
   const io = fakeIO();
   await run(new Program(python, io), 1);
-  expect(io.printed).toEqual(['6']);
+  expect(io.printed).toEqual(['6\n']);
 });
 
 test('function blocks: parameters, RETURN input, line map', () => {
@@ -324,5 +324,5 @@ test('names that differ only in case are not merged', async () => {
   expect(mainStack(HEADER + 'X = {}\nx = 1\n').map(block => block.type)).toEqual(['python_code', 'variables_set']);
   const io = fakeIO();
   await run(new Program(roundTrip(cases[0]), io), 1);
-  expect(io.printed).toEqual(['1']);
+  expect(io.printed).toEqual(['1\n']);
 });

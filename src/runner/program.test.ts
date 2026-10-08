@@ -30,7 +30,23 @@ test('wait pauses for simulated time', async () => {
 
 test('sensor reads do not pause', async () => {
   const io = fakeIO({ line: true }); const p = new Program('a = line("front_left")\nb = line("front_left")\nprint(a, b)\n', io);
-  await run(p, 1); expect(io.printed).toEqual(['True True']);
+  await run(p, 1); expect(io.printed).toEqual(['True True\n']);
+});
+
+// The output gets each print's whole text: the values joined by `sep`, then `end`.
+test('print takes sep and end; each print still ends the step', async () => {
+  const io = fakeIO();
+  const p = new Program('print("a", "b", sep="-")\nprint(1, end="")\nprint(2, 3, sep=None, end=None)\nprint()\n', io);
+  await run(p, 1); expect(io.printed).toEqual(['a-b\n']);
+  await run(p, 3); expect(io.printed).toEqual(['a-b\n', '1', '2 3\n', '\n']);
+});
+
+test('print rejects other keywords, and a sep or end that is not text', async () => {
+  for (const [source, message] of [['print(1, file=None)\n', "print() got an unexpected keyword argument 'file'"],
+    ['print(1, sep=0)\n', 'sep must be None or a string, not int'], ['print(1, end=[])\n', 'end must be None or a string, not list']]) {
+    const p = new Program(source, fakeIO()); await run(p, 1);
+    expect(p.error, source).toMatchObject({ kind: 'TypeError', line: 1, message });
+  }
 });
 
 test('stop interrupts an empty infinite loop', async () => {
@@ -92,7 +108,7 @@ test('the 101st read without a command ends the step first, then reads the new s
   const io = { ...fakeIO(), read: () => completed };
   const p = new Program('v = []\nfor i in range(101):\n    v.append(brightness("front_left"))\nprint(v[0], v[99], v[100])\n', io);
   for (let i = 0; i < 1000 && io.printed.length === 0; i++) if (await p.advance(DT)) completed++;
-  expect(io.printed).toEqual(['0 0 1']);
+  expect(io.printed).toEqual(['0 0 1\n']);
 });
 
 test('a slow 101st read still gives its value to Python', async () => {
@@ -104,7 +120,7 @@ test('a slow 101st read still gives its value to Python', async () => {
   const io = { ...fakeIO(), read };
   const p = new Program('v = []\nfor i in range(101):\n    v.append(brightness("front_left"))\nprint(v[0], v[99], v[100])\n', io);
   for (let i = 0; i < 1000 && io.printed.length === 0 && !p.error; i++) if (await p.advance(DT)) completed++;
-  expect(p.error).toBeNull(); expect(io.printed).toEqual(['0 0 1']);
+  expect(p.error).toBeNull(); expect(io.printed).toEqual(['0 0 1\n']);
 });
 
 test('a sensor error on the 101st read is reported at that read', async () => {
@@ -119,7 +135,7 @@ test('a function that computes across several time slices still returns its resu
   const io = fakeIO();
   const p = new Program('def count():\n    x = 0\n    while x < 20000:\n        x += 1\n    return x\nprint(count())\n', io);
   for (let i = 0; i < 10_000 && io.printed.length === 0 && !p.error; i++) await p.advance(DT);
-  expect(p.error).toBeNull(); expect(io.printed).toEqual(['20000']);
+  expect(p.error).toBeNull(); expect(io.printed).toEqual(['20000\n']);
 });
 
 test('runtime errors carry kind, line and name', async () => {

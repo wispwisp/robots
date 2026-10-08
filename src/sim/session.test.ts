@@ -61,6 +61,14 @@ test('output keeps last 5 lines', async () => {
   expect(s.output).toEqual(['3', '4', '5', '6', '7']);
 });
 
+test('printed text without a newline continues its line', async () => {
+  const s = new Session(getTrack('first_steps'), {}, 'print("a", end="")\nprint("b")\nprint("c", end="")\nprint(1, 2, 3, 4, 5, 6, sep="\\n")\n');
+  await s.step(); expect(s.output).toEqual(['a']);
+  await s.step(); expect(s.output).toEqual(['ab']);
+  await s.step(); expect(s.output).toEqual(['ab', 'c']);
+  await runToEnd(s); expect(s.output).toEqual(['2', '3', '4', '5', '6']);
+});
+
 test('identical runs', async () => {
   const a = new Session(getTrack('colors'), REFERENCE_ASSEMBLY, readSolution('colors')); await runToEnd(a);
   const b = new Session(getTrack('colors'), REFERENCE_ASSEMBLY, readSolution('colors')); await runToEnd(b);

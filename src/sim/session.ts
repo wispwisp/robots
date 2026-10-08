@@ -14,7 +14,7 @@ const OUTPUT_LINES = 5;
 export class Session {
   readonly world: World;
   readonly program: Program;
-  readonly output: string[] = []; // the last OUTPUT_LINES printed lines
+  private printed = ''; // the end of the printed text: its last OUTPUT_LINES lines and the line being printed
   private _outcome: RunOutcome = 'running';
 
   constructor(track: Track, assembly: Assembly, source: string) {
@@ -22,14 +22,18 @@ export class Session {
     this.program = new Program(source, {
       setMotors: (left, right) => setMotors(this.world, left, right),
       read: (fn, slot) => readSensor(this.world, fn, slot),
-      print: text => {
-        this.output.push(text);
-        if (this.output.length > OUTPUT_LINES) this.output.shift();
-      },
+      print: text => { this.printed = (this.printed + text).split('\n').slice(-OUTPUT_LINES - 1).join('\n'); },
     });
   }
 
   get outcome(): RunOutcome { return this._outcome; }
+
+  // The last OUTPUT_LINES printed lines; the last one may still be continued (`print(x, end="")`).
+  get output(): string[] {
+    const lines = this.printed.split('\n');
+    if (lines.at(-1) === '') lines.pop(); // nothing printed after the last newline
+    return lines.slice(-OUTPUT_LINES);
+  }
 
   // A step whose Python was only interrupted by Skulpt's time slice is not complete: the world
   // stays as it is, and the next call continues the same step.
