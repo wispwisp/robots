@@ -178,14 +178,14 @@ test('list element assignment', () => {
 
 // Python rejects break/continue outside a loop, and on a rendered workspace Blockly disables such a block
 // (so it would generate nothing). They stay Python code, so the text is kept and running it shows the error.
+async function renderedRoundTrip(src: string) {
+  const ws = createHeadlessWorkspace();
+  Object.assign(ws, { isDragging: () => false }); // as on a WorkspaceSvg, which makes Blockly's loop check run
+  Blockly.serialization.workspaces.load(convert(src).blocks, ws);
+  await new Promise(resolve => setTimeout(resolve, 0)); // let Blockly fire its events
+  return blocksToPython(ws).code;
+}
 test('break and continue outside a loop stay Python code; inside a loop they are blocks', async () => {
-  async function renderedRoundTrip(src: string) {
-    const ws = createHeadlessWorkspace();
-    Object.assign(ws, { isDragging: () => false }); // as on a WorkspaceSvg, which makes Blockly's loop check run
-    Blockly.serialization.workspaces.load(convert(src).blocks, ws);
-    await new Promise(resolve => setTimeout(resolve, 0)); // let Blockly fire its events
-    return blocksToPython(ws).code;
-  }
   const flow = (src: string) => types(src).filter(type => type === 'controls_flow_statements' || type === 'python_code');
   for (const src of [HEADER + 'if a:\n    break\nstop()\n', HEADER + 'def go():\n    continue\n\ngo()\n',
     HEADER + 'while a:\n    stop()\nbreak\n']) {
@@ -302,4 +302,27 @@ test('functions call each other, also before their definition and recursively', 
     + 'def fact(n):\n    if n <= 1:\n        return 1\n    return n * fact(n - 1)\n\na()\n';
   expect(types(src)).not.toContain('python_code');
   expect(roundTrip(src)).toBe(src);
+});
+
+// Ruling R19: Blockly matches variable, parameter and function names ignoring case. The first spelling of a name
+// (function and parameter names first) gets blocks; a statement with another spelling of it stays Python code.
+test('names that differ only in case are not merged', async () => {
+  const cases = [
+    HEADER + 'x = 1\nX = 2\nprint(x)\n',
+    HEADER + 'def go():\n    stop()\n\ndef Go():\n    wait(1)\ngo()\nGo()\n',
+    HEADER + 'def drive(Speed):\n    motors(Speed, Speed)\n\nspeed = 50\ndrive(speed)\n',
+    HEADER + 'def f(a, A):\n    pass\nf(1, 2)\n',
+  ];
+  for (const src of cases) {
+    expect(roundTrip(src), src).toBe(src);
+    expect(await renderedRoundTrip(src), src).toBe(src);
+  }
+  expect(mainStack(cases[0]).map(block => block.type)).toEqual(['variables_set', 'python_code', 'text_print']);
+  expect(types(cases[2])).toEqual(['procedures_defnoreturn', 'robot_motors', 'variables_get', 'variables_get',
+    'robot_start', 'python_code', 'python_code']);
+  // A statement that falls back for another reason claims no name: `x` after `X = {}` still gets a block.
+  expect(mainStack(HEADER + 'X = {}\nx = 1\n').map(block => block.type)).toEqual(['python_code', 'variables_set']);
+  const io = fakeIO();
+  await run(new Program(roundTrip(cases[0]), io), 1);
+  expect(io.printed).toEqual(['1']);
 });

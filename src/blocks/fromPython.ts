@@ -96,6 +96,10 @@ class Converter {
   private inLoop = false; // break and continue are allowed
   private count = 0;
   private readonly procedures = new Map<string, Node>(); // the `def`s that become function blocks
+  // Blockly matches variable, parameter and function names ignoring case, so only one spelling of a name gets
+  // blocks: lower case → that spelling. Function and parameter names claim theirs first, then the statements
+  // in order; a statement with another spelling stays Python code.
+  private spellings = new Map<string, string>();
   private finalReturn: Node = null; // the `return v` that ends the function being converted
   private returned?: Block; // its value, for the RETURN input
   private declared: Set<string> | null = null; // the names the generator declares `global` in that function
@@ -109,7 +113,9 @@ class Converter {
   // Function definitions become separate blocks; all other statements go under «when started».
   convert(nodes: Node[]): object {
     for (const node of nodes) {
-      if (this.isProcedure(node) && !this.procedures.has(node.name.v)) this.procedures.set(node.name.v, node);
+      if (this.isProcedure(node) && !this.procedures.has(node.name.v) && this.claim([node.name.v, ...paramNames(node)])) {
+        this.procedures.set(node.name.v, node);
+      }
     }
     const start = this.block('robot_start');
     const functions: Block[] = [];
@@ -146,7 +152,9 @@ class Converter {
   // v goes into the RETURN input (see spec()); any other return is a return block.
   private procedure(node: Node, span: Span): Block {
     const params = paramNames(node);
+    const spellings = this.spellings;
     this.declared = new Set([...this.assignedByBlocks(node.body)].filter(name => !params.includes(name)));
+    this.spellings = spellings;
     const last = node.body[node.body.length - 1];
     this.finalReturn = kind(last) === 'Return' && last.value ? last : null;
     this.returned = undefined;
@@ -166,12 +174,14 @@ class Converter {
   private assignedByBlocks(nodes: Node[], names = new Set<string>()): Set<string> {
     for (const node of nodes) {
       const count = this.count;
+      const spellings = this.spellings;
       try {
         const spec = this.spec(node, { start: node.lineno, end: node.lineno, col: node.col_offset });
         if (spec && ASSIGNING.includes(spec.type)) names.add((spec.fields as any).VAR.name);
         for (const body of spec?.bodies ?? []) this.assignedByBlocks(body.nodes, names);
       } catch (e) {
         if (!(e instanceof Unsupported)) throw e;
+        this.spellings = spellings;
       }
       this.count = count;
     }
@@ -182,12 +192,14 @@ class Converter {
   private statement(node: Node, span: Span, out: Block[]): void {
     this.flush(span.start - 1, out);
     const count = this.count;
+    const spellings = this.spellings;
     let spec: Spec | null;
     try {
       spec = this.spec(node, span);
     } catch (e) {
       if (!(e instanceof Unsupported)) throw e;
       this.count = count;
+      this.spellings = spellings; // a statement left as Python code claims no name
       this.takeComments(span.cut === undefined ? span.end : span.end - 1); // they stay in the text
       const block = this.block('python_code', { CODE: this.text(span) });
       this.mapLines(span, block.id);
@@ -427,7 +439,19 @@ class Converter {
   // The VAR field for a Name node.
   private variable(node: Node) {
     const name: string = node.id.v;
-    return isValidName(name) ? { VAR: { id: 'v:' + name, name } } : unsupported();
+    return isValidName(name) && this.claim([name]) ? { VAR: { id: 'v:' + name, name } } : unsupported();
+  }
+
+  // Claims the spellings of these names for blocks; false (and nothing claimed) when one differs from a claimed
+  // spelling only in case. The map is replaced, not changed, so a saved one can be put back.
+  private claim(names: string[]): boolean {
+    const spellings = new Map(this.spellings);
+    for (const name of names) {
+      if ((spellings.get(name.toLowerCase()) ?? name) !== name) return false;
+      spellings.set(name.toLowerCase(), name);
+    }
+    this.spellings = spellings;
+    return true;
   }
 
   private number(value: number): Block {
