@@ -143,7 +143,10 @@ Variable, function and parameter names may use only Latin letters, digits
 and `_` (Skulpt 1.2.0 rejects other letters). Block dialogs refuse other
 names with a translated hint («Имя может содержать только латинские буквы,
 цифры и _»); a Cyrillic name typed in Python shows the same hint as its
-syntax error.
+syntax error. Blockly treats names that differ only in case as one name, so
+when reading Python only the first spelling (function and parameter names
+first) gets blocks; a statement using another spelling (`X` next to `x`)
+stays a «Python-код» block.
 
 ### Program structure
 - The main program is the stack under the single, undeletable
@@ -206,10 +209,14 @@ errors); other errors show Python's original English text.
   time.
 - Python that runs without commands or sensor reads (e.g. `while True: pass`)
   is paused every few milliseconds so Stop always works and the tab never
-  freezes, but no simulated time passes while it runs.
+  freezes, but no simulated time passes while it runs. After 1 s of real
+  time without simulated time passing, the run status says so («Программа
+  работает, но не даёт роботу команд — время на трассе стоит») until time
+  moves again or the run ends.
 - If the laptop can't keep up, the simulation slows down instead of skipping
   steps, so a run is identical on every machine.
-- At each pause, the block and Python line that caused it are highlighted.
+- At each pause, the block and Python line that caused it are highlighted
+  and scrolled into view.
 
 ### Mat and tracks
 Mat: 200 × 120 cm, white, 2 cm black line, scaled to fit its pane. Sensors
