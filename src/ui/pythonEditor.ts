@@ -82,7 +82,13 @@ export function createPythonEditor(parent: HTMLElement, onChange: (text: string)
       const diagnostics = at ? [{ from: at.from, to: at.to, severity: 'error' as const, message: error!.message }] : [];
       view.dispatch(setDiagnostics(view.state, diagnostics));
     },
-    highlightLine: line => view.dispatch({ effects: setRunLine.of(line) }),
+    // The line is scrolled into view (only as far as needed), so the student can follow the run.
+    highlightLine(line) {
+      const { doc } = view.state;
+      const shown = line !== null && line >= 1 && line <= doc.lines;
+      const scroll = shown ? [EditorView.scrollIntoView(doc.line(line).from, { y: 'nearest' })] : [];
+      view.dispatch({ effects: [setRunLine.of(line), ...scroll] });
+    },
     setDark: dark => view.dispatch({ effects: theme.reconfigure(dark ? oneDark : []) }),
   };
 }

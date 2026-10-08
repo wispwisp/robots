@@ -36,6 +36,30 @@ test('editors are read-only while running', async ({ page }) => {
   await page.getByTestId('python-editor').click(); await page.keyboard.type('zzz');
   await expect(page.getByTestId('python-editor')).not.toContainText('zzz');
 });
+test('the line and block being run are scrolled into view', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1366, height: 657 });
+  await setupReference(page, 'colors');
+  await page.locator('.cm-scroller').evaluate(e => { e.scrollTop = 0; }); // the solution's last lines are run most
+  await page.getByTestId('run').click();
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(1000);
+    // Measured in one go, as the highlight moves on every frame.
+    const seen = await page.evaluate(() => {
+      const inside = (box: DOMRect, area: { top: number; bottom: number; left: number; right: number }) =>
+        box.top >= area.top - 1 && box.top + Math.min(box.height, area.bottom - area.top) <= area.bottom + 1
+        && box.left >= area.left - 1 && box.left < area.right;
+      const line = document.querySelector('.cm-run-line')!.getBoundingClientRect();
+      const scroller = document.querySelector('.cm-scroller')!.getBoundingClientRect();
+      const pane = document.querySelector<HTMLElement>('[data-testid=blocks-pane]')!;
+      const block = pane.querySelector(`[data-id="${pane.dataset.highlight}"] > .blocklyPath`)!.getBoundingClientRect();
+      const host = pane.querySelector('.blocklySvg')!.getBoundingClientRect();
+      const toolbox = pane.querySelector('.blocklyToolbox')!.getBoundingClientRect();
+      return { line: inside(line, scroller), block: inside(block, { ...host.toJSON(), left: toolbox.right }) };
+    });
+    expect(seen, `sample ${i}`).toEqual({ line: true, block: true });
+  }
+});
 test('the error line stays highlighted; a rerun of the fixed line highlights its new block', async ({ page }) => {
   await gotoProgram(page); await setPython(page, 'from robot import *\n\nwhile True:\n    motor(1, 2)\n');
   await page.getByTestId('run').click(); await expect(page.getByTestId('status')).toContainText('Строка 4');

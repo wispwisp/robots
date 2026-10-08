@@ -107,9 +107,12 @@ export function createBlocksPane(parent: HTMLElement, onChange: () => void): Blo
     lock.firstElementChild!.textContent = readOnly ? '' : syncHint;
   }
 
+  // The block is scrolled into view when it is outside it (the student can't scroll the locked pane during a run).
   function highlight(blockId: string | null): void {
     el.dataset.highlight = blockId ?? '';
     ws.highlightBlock(blockId);
+    const block = blockId ? ws.getBlockById(blockId) : null;
+    if (block) ws.scrollBoundsIntoView(block.getBoundingRectangleWithoutChildren());
   }
 
   return {
