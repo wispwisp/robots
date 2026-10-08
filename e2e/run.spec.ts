@@ -16,6 +16,15 @@ test('stop interrupts an infinite loop', async ({ page }) => {
   await page.waitForTimeout(500); await page.getByTestId('stop').click();
   await expect(page.getByTestId('run')).toBeEnabled({ timeout: 1000 });
 });
+// Ruling R20: no world time passes without commands or sensor reads, so the run says why the robot stands still.
+test('a program that gives no commands gets a hint until it is stopped', async ({ page }) => {
+  await gotoProgram(page); await setPython(page, 'from robot import *\n\nmotors(50, 50)\nwhile True:\n    pass\n');
+  await page.getByTestId('run').click();
+  await expect(page.getByTestId('status')).toHaveText('Программа работает, но не даёт роботу команд — время на трассе стоит',
+    { timeout: 3000 });
+  await page.getByTestId('stop').click();
+  await expect(page.getByTestId('status')).toBeHidden();
+});
 test('runtime error is translated and highlighted', async ({ page }) => {
   await gotoProgram(page); await setPython(page, 'from robot import *\n\nmotor(1, 2)\n'); await page.getByTestId('run').click();
   await expect(page.getByTestId('status')).toContainText('Имя «motor» не найдено');

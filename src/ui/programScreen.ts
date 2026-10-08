@@ -14,6 +14,8 @@ import { CodeSync, type ProgramState } from './sync';
 import { currentTheme, onThemeChange } from './theme';
 import { TrackView } from './trackView';
 
+const STILL_HINT_MS = 1000; // real time a run's world time may stand still before the noCommands hint
+
 export function renderProgramScreen(root: HTMLElement): void {
   const code = root.querySelector<HTMLElement>('.program-code')!;
   code.innerHTML = `
@@ -94,6 +96,7 @@ function setUpRunning(panel: HTMLElement, sync: CodeSync, blocks: BlocksPane, ed
   let shownTrackId: TrackId; // what the robot and the mat were set up from
   let shownAssembly: Assembly;
   let highlighted: number | null = null; // the line (and its block) highlighted in the editors
+  let moved = { time: 0, at: 0 }; // the run's world time when it was last seen to change, and the real time (ms) then
 
   function show(): void {
     const world = session?.world ?? idle;
@@ -137,6 +140,18 @@ function setUpRunning(panel: HTMLElement, sync: CodeSync, blocks: BlocksPane, ed
     if (s.outcome === 'running') highlight(s.program.line);
     show();
     if (s.outcome !== 'running') finishRun();
+    else showStill(s.world.time);
+  }
+
+  // World time passes only while the program gives commands or reads sensors. When it has stood still for
+  // STILL_HINT_MS of a run, a hint in the status line says why; it goes as soon as time moves or the run ends.
+  function showStill(time: number): void {
+    const now = performance.now();
+    if (time !== moved.time) moved = { time, at: now };
+    const hint = now - moved.at >= STILL_HINT_MS ? t('noCommands') : '';
+    if (status.textContent === hint) return;
+    status.textContent = hint;
+    status.hidden = !hint;
   }
 
   // The run has ended or was stopped. A program error keeps its line and block highlighted.
@@ -174,6 +189,7 @@ function setUpRunning(panel: HTMLElement, sync: CodeSync, blocks: BlocksPane, ed
     highlight(null); // the last run's error line: the program may have been edited since
     const { trackId, assembly } = getState();
     session = new Session(getTrack(trackId), { ...assembly }, editor.getText()); // a copy: the world keeps it
+    moved = { time: 0, at: performance.now() };
     loop = startRunLoop(session, onFrame);
     setRunning(true);
   };
