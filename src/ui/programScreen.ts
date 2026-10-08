@@ -10,7 +10,7 @@ import { createPythonEditor, type PythonEditor } from './pythonEditor';
 import { formatTime, renderReadings } from './readings';
 import { startRunLoop } from './runLoop';
 import { getState, subscribe, update } from './state';
-import { CodeSync, type ProgramState } from './sync';
+import { CodeSync, type SavedProgram } from './sync';
 import { currentTheme, onThemeChange } from './theme';
 import { TrackView } from './trackView';
 
@@ -65,7 +65,7 @@ export function renderProgramScreen(root: HTMLElement): void {
 
   // The program saved last; any other program in the state (a new project) is loaded into the editors.
   // Loaded last, so the screen is fully set up whatever the saved program holds.
-  let saved: ProgramState | null = null;
+  let saved: SavedProgram | null = null;
   sync.onState(state => {
     saved = state;
     update(state);

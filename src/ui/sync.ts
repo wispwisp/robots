@@ -13,7 +13,7 @@ import type { ProgramError } from '../runner/errors';
 import type { BlocksPane } from './blocksPane';
 import type { PythonEditor } from './pythonEditor';
 
-export interface ProgramState { python: string; blocks: object }
+export interface SavedProgram { python: string; blocks: object }
 
 const TYPING_PAUSE_MS = 500;
 // Only «при запуске»: the blocks of a new program, before (or without) the ones built from its Python.
@@ -23,7 +23,7 @@ export class CodeSync {
   private map = new Map<number, string>();
   private error: ProgramError | null = null;
   private pending: ReturnType<typeof setTimeout> | undefined; // a Python edit waiting for the typing pause
-  private readonly listeners = new Set<(state: ProgramState) => void>();
+  private readonly listeners = new Set<(state: SavedProgram) => void>();
 
   constructor(private readonly blocks: BlocksPane, private readonly editor: PythonEditor) {
     onLangChange(() => this.show());
@@ -38,7 +38,7 @@ export class CodeSync {
   }
 
   // Called with the program to save after every change.
-  onState(cb: (state: ProgramState) => void): void {
+  onState(cb: (state: SavedProgram) => void): void {
     this.listeners.add(cb);
   }
 

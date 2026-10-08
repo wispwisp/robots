@@ -7,7 +7,7 @@ import { setLang } from '../i18n';
 import { DEFAULT_PYTHON } from '../storage';
 import type { BlocksPane } from './blocksPane';
 import type { EditorError, PythonEditor } from './pythonEditor';
-import { CodeSync, type ProgramState } from './sync';
+import { CodeSync, type SavedProgram } from './sync';
 
 beforeAll(() => { registerBlocks(); applyBlocklyLocale('ru'); });
 beforeEach(() => { vi.useFakeTimers(); });
@@ -40,7 +40,7 @@ function setup() {
     setError: (error: EditorError | null) => { editor.error = error; },
   } as unknown as PythonEditor;
   const sync = new CodeSync(blocks, editorPane);
-  const states: ProgramState[] = [];
+  const states: SavedProgram[] = [];
   sync.onState(state => states.push(state));
   // The student types: the editor's text changes and it tells the sync.
   const type = (text: string) => { editor.text = text; sync.pythonChanged(); };

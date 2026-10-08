@@ -22,7 +22,6 @@ export interface BlocksPane {
   highlight(blockId: string | null): void;
   relocalize(): void;
   setDark(dark: boolean): void;
-  resize(): void;
 }
 
 // onChange: the student changed the blocks.
@@ -141,6 +140,5 @@ export function createBlocksPane(parent: HTMLElement, onChange: () => void): Blo
       dark = value;
       ws.setTheme(dark ? DarkTheme : Blockly.Themes.Classic);
     },
-    resize: () => Blockly.svgResize(ws),
   };
 }
