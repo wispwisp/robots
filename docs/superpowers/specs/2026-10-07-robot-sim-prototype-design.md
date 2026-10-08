@@ -307,6 +307,9 @@ Each part has one job and can be tested on its own:
 - GitHub Actions builds and deploys to GitHub Pages on every push to `main`.
 - The repository owner must create the GitHub repository and enable Pages
   (not doable from this environment).
+- Demo video `docs/demo/robo-trassa-demo.mp4` (≈1.5 min, Russian captions):
+  one line sensor, a line follower built from blocks, track 1 completed.
+  Re-recorded with `scripts/record-demo.mjs` (instructions in its header).
 
 ## 11. Open items for the owner
 
